@@ -74,6 +74,8 @@ struct SettingsView: View {
                     Text("Reset erases the devices and sales on this phone. Delete Account also removes your account from the server.")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Palette.background)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

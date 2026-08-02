@@ -23,6 +23,8 @@ it to the target automatically** — no pbxproj editing.
 | `SyncSettings.swift` | Server URL, account email, device id (UserDefaults) + token (Keychain) + last-synced date. |
 | `PreviewData.swift` | In-memory container with sample data, for `#Preview` only. |
 | `ContentView.swift` | The three tabs. |
+| `Palette.swift` | The colour scheme, semantic names over asset colorsets. |
+| `Views/BrandLogo.swift` | The mark and the wordmark lockup. |
 | `Views/` | One file per screen, plus `Components.swift` and `PhotoSupport.swift`. |
 
 ## Screens
@@ -38,8 +40,17 @@ deducted, and hides that second line when there were none.
 **Insights** — the headline cards, the affordability card, two charts, a
 platform breakdown, and the gear icon for Settings.
 
-**Onboarding** (full-screen on first launch) — server address, then sign in *or*
-create an account. Creating one needs a one-time activation code issued from the
+**Onboarding** (full-screen on first launch) — the welcome screen asks offline or
+online, then server address, then sign in *or* create an account. Steps carry an
+`.id(step)` and an asymmetric transition, so moving forward slides the next step
+in from the right while the current one leaves left.
+
+Its presentation is a **computed binding** over `settings.hasSeenOnboarding`, not
+`@State` seeded in `.task`. That was a real bug: Reset App cleared the flag and
+nothing happened, because the task had already run and never ran again. Reading
+it live means the cover reappears the moment the flag flips, whoever flipped it.
+
+Onboarding continues: Creating one needs a one-time activation code issued from the
 server's `/admin` page; there is no open sign-up. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the flow. Offers "Set Up Later", because
 the app is the source of truth and works with no server at all. Once dismissed
@@ -101,6 +112,15 @@ version had `NSAllowsLocalNetworking` for plain HTTP on the LAN; that was
 removed once TLS was in place. If you ever go back to a LAN-only HTTP setup
 you'll need to re-add it or connections fail silently.
 
+## The mark
+
+`BrandLogo` draws two circular arrows turning around a £ — the sync idea and the
+thing being tracked in one glyph. It's `arrow.triangle.2.circlepath` with the £
+laid over it in a ZStack rather than a bundled image, so it stays sharp at any
+size and takes the tint in both colour schemes. `BrandLockup` adds the wordmark
+in **Didot**, which ships with iOS; if it were ever missing SwiftUI falls back to
+the system face rather than failing to draw.
+
 ## Colour
 
 Four brand colours, defined once in `Palette.swift` over asset catalog colorsets:
@@ -117,6 +137,13 @@ invisible in one mode. The colorsets therefore *substitute* rather than reuse:
 light and yellow on dark. Don't "simplify" them to single values.
 `BrandHighlightFill` is the exception that stays pale yellow in both modes,
 because it's only ever a background with dark ink on top.
+
+**Backgrounds are coloured, not system grey.** `Palette.background` is a warm
+cream in light and a burgundy-tinted near-black in dark, with `surface` one step
+up for cards. Lists and Forms draw their own grouped background, so each screen
+sets `.scrollContentBackground(.hidden)` and puts the brand colour behind —
+without that, half the app falls back to system grey and the theme looks broken
+on exactly the screens you don't screenshot.
 
 **It can't carry categories.** Brick and orange sit ΔE 13.7 apart, below the 15
 floor for distinguishing two series at a glance, and with five sale platforms

@@ -61,6 +61,8 @@ struct SaleEditorView: View {
                         .lineLimit(2...5)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Palette.background)
             .navigationTitle(isNew ? "New Sale" : "Edit Sale")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

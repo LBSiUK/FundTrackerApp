@@ -81,6 +81,8 @@ struct DeviceEditorView: View {
                         .lineLimit(3...6)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Palette.background)
             .navigationTitle(isNew ? "New Device" : "Edit Device")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

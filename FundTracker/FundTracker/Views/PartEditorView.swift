@@ -46,6 +46,8 @@ struct PartEditorView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Palette.background)
             .navigationTitle("Add Part")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

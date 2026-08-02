@@ -35,7 +35,7 @@ struct InsightsView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Palette.background)
             .navigationTitle("Insights")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -113,7 +113,7 @@ struct InsightsView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20))
         }
     }
 
@@ -227,7 +227,7 @@ struct InsightsView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20))
         }
     }
 }
@@ -251,7 +251,7 @@ private struct ChartCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20))
     }
 }
 

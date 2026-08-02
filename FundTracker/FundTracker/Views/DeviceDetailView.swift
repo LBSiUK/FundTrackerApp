@@ -73,6 +73,8 @@ struct DeviceDetailView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Palette.background)
         .navigationTitle(device.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

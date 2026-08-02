@@ -45,7 +45,17 @@ struct OnboardingView: View {
                 case .signIn: signInStep
                 }
             }
+            // Each step is a distinct view as far as SwiftUI is concerned, so
+            // it can slide the new one in from the right while the old one
+            // leaves to the left — forward motion, the way a stack reads.
+            .id(step)
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing),
+                removal: .move(edge: .leading)
+            ))
             .padding(.horizontal)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Palette.background)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -77,68 +87,84 @@ struct OnboardingView: View {
     // MARK: - Step 0
 
     private var chooseStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: "sterlingsign.circle.fill")
-                    .font(.largeTitle)
-                    .foregroundStyle(.tint)
+        VStack(spacing: 0) {
+            Spacer(minLength: 12)
 
-                Text("How do you want to use FundTracker?")
-                    .font(.title2.bold())
+            BrandLockup(logoSize: 150)
 
-                Text("Everything works on this phone either way. A dashboard just adds a browser view of the same figures.")
-                    .foregroundStyle(.secondary)
+            Spacer(minLength: 24)
+
+            Text("How do you want to use FundTracker?")
+                .font(.title2.bold())
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 24)
+
+            VStack(spacing: 14) {
+                Button {
+                    // Animated here rather than in the view body so only a
+                    // deliberate step change slides.
+                    withAnimation(.easeInOut(duration: 0.32)) { step = .address }
+                } label: {
+                    choice(
+                        title: "Use an account",
+                        detail: "Sync to a server you run, and view your fund in a browser.",
+                        icon: "icloud.and.arrow.up"
+                    )
+                }
+                .buttonStyle(.glassProminent)
+
+                Button {
+                    settings.mode = .offline
+                    finish()
+                } label: {
+                    choice(
+                        title: "Stay offline",
+                        detail: "Keep everything on this phone. You can create an account later and bring these records with you.",
+                        icon: "iphone"
+                    )
+                }
+                .buttonStyle(.glass)
             }
+            // Same shape on both, so neither reads as the "real" one by virtue
+            // of its outline.
+            .buttonBorderShape(.roundedRectangle(radius: 26))
 
-            Button {
-                step = .address
-            } label: {
-                choice(
-                    title: "Use an account",
-                    detail: "Sync to a server you run, and view your fund in a browser.",
-                    icon: "icloud.and.arrow.up"
-                )
-            }
-            .buttonStyle(.glassProminent)
+            Spacer(minLength: 24)
 
-            Button {
-                settings.mode = .offline
-                finish()
-            } label: {
-                choice(
-                    title: "Stay offline",
-                    detail: "Keep everything on this phone. You can create an account later and bring these records with you.",
-                    icon: "iphone"
-                )
-            }
-            .buttonStyle(.glass)
-
-            // Stated up front rather than discovered later, because it's the
-            // one direction that doesn't reverse.
+            // Stated up front rather than discovered later, because it's the one
+            // direction that doesn't reverse.
             Text("Offline records can join an account later. Once an account holds them, they can't be taken back offline.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-
-            Spacer()
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 8)
         }
     }
 
+    /// Both choices use this, so they end up the same height and shape however
+    /// long the wording is.
     private func choice(title: String, detail: String, icon: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.title3)
-                .frame(width: 28)
+                .font(.title2)
+                .frame(width: 34)
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.headline)
                 Text(detail)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
+        // A fixed height is what actually makes the two match; without it the
+        // shorter label gives a shorter button.
+        .frame(height: 96)
     }
 
     // MARK: - Step 1
@@ -306,7 +332,9 @@ struct OnboardingView: View {
         password = ""
         confirmPassword = ""
         errorMessage = nil
-        step = step == .signIn ? .address : (settings.canGoOffline ? .choose : .address)
+        withAnimation(.easeInOut(duration: 0.32)) {
+            step = step == .signIn ? .address : (settings.canGoOffline ? .choose : .address)
+        }
     }
 
     private func checkAddress() async {
@@ -323,7 +351,7 @@ struct OnboardingView: View {
             }
 
             confirmedHost = ServerAddress.normalise(address)?.host ?? address
-            step = .signIn
+            withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
         } catch {
             errorMessage = error.localizedDescription
         }

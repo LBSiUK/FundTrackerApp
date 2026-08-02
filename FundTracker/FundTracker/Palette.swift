@@ -29,6 +29,22 @@ enum Palette {
     /// Pale yellow. A background only — put `.primary` ink on top of it.
     static let highlightFill = Color("BrandHighlightFill")
 
+    // MARK: Surfaces
+    //
+    // The app doesn't sit on system grey and system black. Light is a warm
+    // cream pulled down from FFF984, dark a near-black pulled down from
+    // 5F021F — coloured enough to read as the brand, far enough from the ink
+    // on top of them to stay legible.
+
+    /// Behind everything.
+    static let background = Color("BrandBackground")
+
+    /// Cards and grouped rows, one step up from the background.
+    static let surface = Color("BrandSurface")
+
+    /// One step up again, for anything that needs to lift off a card.
+    static let surfaceRaised = Color("BrandSurfaceRaised")
+
     // MARK: Semantic roles
     //
     // Named by the job rather than the colour, so a future palette change is one

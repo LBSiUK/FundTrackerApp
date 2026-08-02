@@ -49,7 +49,7 @@ struct StatCard<Footer: View>: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
         .padding(.horizontal, 16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20))
     }
 }
 
