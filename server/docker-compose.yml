@@ -1,0 +1,38 @@
+services:
+  app:
+    build: .
+    image: fundtracker
+    container_name: fundtracker
+    env_file: .env
+    volumes:
+      - ./data:/data
+    # Bound to loopback only — the internet reaches this through Caddy, never
+    # directly, and nothing on the LAN can hit it either.
+    ports:
+      - "127.0.0.1:3100:3100"
+    restart: unless-stopped
+    networks: [fundtracker]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: fundtracker-caddy
+    depends_on: [app]
+    environment:
+      FUND_DOMAIN: ${FUND_DOMAIN:?set FUND_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./logs:/var/log/caddy
+    restart: unless-stopped
+    networks: [fundtracker]
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  fundtracker:

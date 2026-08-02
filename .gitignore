@@ -1,0 +1,34 @@
+# Real hostnames, IPs and DNS records — deliberately not published
+docs/LOCAL-NOTES.md
+
+# Secrets
+.env
+*.env
+!.env.example
+
+# Node
+node_modules/
+*.log
+
+# Server runtime data: snapshot.json and users.json
+server/data/
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store

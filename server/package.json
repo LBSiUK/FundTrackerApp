@@ -1,0 +1,13 @@
+{
+  "name": "fundtracker-server",
+  "version": "1.0.0",
+  "description": "FundTracker web dashboard — repair fund income and parts spend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}

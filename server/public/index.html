@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>FundTracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="login" class="gate" hidden>
+    <form id="login-form" class="gate-card">
+      <h1>FundTracker</h1>
+      <p class="muted">Sign in to view your repair fund.</p>
+      <label class="field">
+        <span>Username</span>
+        <input id="username-input" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input id="password-input" type="password" autocomplete="current-password" required>
+      </label>
+      <button id="login-button" type="submit">Sign in</button>
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </form>
+  </div>
+
+  <main id="dashboard" hidden>
+    <header class="page-head">
+      <div>
+        <h1>Repair Fund</h1>
+        <p id="synced-at" class="muted"></p>
+      </div>
+      <button id="sign-out" class="ghost">Sign out</button>
+    </header>
+
+    <section class="cards" aria-label="Headline figures">
+      <div class="card stat">
+        <h2>Money In</h2>
+        <p id="stat-in" class="figure in">—</p>
+        <p id="stat-in-note" class="muted"></p>
+      </div>
+      <div class="card stat">
+        <h2>Money Out</h2>
+        <p id="stat-out" class="figure out">—</p>
+        <p class="muted">Parts you've actually bought</p>
+      </div>
+      <div class="card stat">
+        <h2>Available Balance</h2>
+        <p id="stat-balance" class="figure">—</p>
+        <p class="muted">Your repair fund right now</p>
+      </div>
+    </section>
+
+    <section id="outstanding-card" class="card" hidden>
+      <div class="row-between">
+        <h2>Parts Still To Buy</h2>
+        <span id="outstanding-amount" class="figure-sm pending"></span>
+      </div>
+      <p id="outstanding-devices" class="muted"></p>
+      <hr>
+      <p id="affordability" class="affordability"></p>
+    </section>
+
+    <section class="card">
+      <h2>Money In by Month</h2>
+      <p class="muted">Net of fees and postage</p>
+      <div id="chart-income" class="chart"></div>
+    </section>
+
+    <section id="spend-section" class="card" hidden>
+      <h2>Spend by Device</h2>
+      <p class="muted">Parts bought so far</p>
+      <div id="chart-spend" class="chart"></div>
+    </section>
+
+    <section class="grid-2">
+      <div id="platform-card" class="card" hidden>
+        <h2>Where It Came From</h2>
+        <ul id="platform-list" class="plain-list"></ul>
+      </div>
+
+      <div id="devices-card" class="card" hidden>
+        <h2>Devices</h2>
+        <ul id="devices-list" class="plain-list"></ul>
+      </div>
+    </section>
+
+    <section id="sales-section" class="card" hidden>
+      <h2>Sales Log</h2>
+      <div class="table-scroll">
+        <table id="sales-table">
+          <thead>
+            <tr>
+              <th scope="col">Item</th>
+              <th scope="col">Platform</th>
+              <th scope="col">Date</th>
+              <th scope="col" class="num">Sold for</th>
+              <th scope="col" class="num">Into fund</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p id="empty-note" class="muted center" hidden>
+      No data yet — open FundTracker on your phone and tap Sync.
+    </p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

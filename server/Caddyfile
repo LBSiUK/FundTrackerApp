@@ -1,0 +1,24 @@
+# Caddy fetches and renews a Let's Encrypt certificate for this name
+# automatically. It needs ports 80 and 443 forwarded from the router:
+# 80 is used for the ACME challenge and to redirect to HTTPS.
+
+{$FUND_DOMAIN} {
+	encode gzip
+
+	# The app is only reachable on the internal Docker network, so HTTPS
+	# termination here is the single way in.
+	reverse_proxy app:3100
+
+	header {
+		# Once a browser has seen this, it refuses plain HTTP for a year.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
