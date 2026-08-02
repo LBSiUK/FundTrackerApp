@@ -18,11 +18,11 @@ is the point: a token lifted off a phone shows an attacker nothing.
 **Device tokens.** The app signs in once with your email and password, and the
 server hands back a random 32-byte token belonging to that phone alone. The
 password is never stored on the device. Tokens are kept as SHA-256 hashes in
-`data/devices.json` — plain SHA-256 rather than scrypt on purpose, because a
+the `devices` table — plain SHA-256 rather than scrypt on purpose, because a
 token is CSPRNG output with no dictionary to attack, unlike a human-chosen
 password. Each phone can be revoked without disturbing the others.
 
-Passwords are scrypt-hashed (N=16384) in `data/users.json`. Sessions are
+Passwords are scrypt-hashed (N=16384). Sessions are
 stateless HMAC-signed cookies — HttpOnly, SameSite=Lax, Secure behind TLS — so
 they survive a restart and are unreadable from JavaScript.
 
@@ -37,22 +37,42 @@ it from `.env` once every device has signed in.
 
 ## Endpoints
 
-| Method | Path                | Auth    | Purpose                          |
-|--------|---------------------|---------|----------------------------------|
-| GET    | `/api/health`       | none    | Liveness, and what the app probes during setup. Returns `service` and `setupRequired` |
-| POST   | `/api/auth/login`   | none    | Sign in, sets the session cookie |
-| POST   | `/api/auth/device`  | none    | Exchange email + password for a device token |
-| POST   | `/api/auth/logout`  | none    | Clears the cookie                |
-| POST   | `/api/sync`         | Bearer  | The app pushes `{ devices, sales }` |
-| GET    | `/api/summary`      | Session | Everything the dashboard renders |
-| GET    | `/api/snapshot`     | Session | Raw payload, for backups         |
-| GET    | `/api/devices`      | Session | Phones that can sync             |
-| DELETE | `/api/devices/:id`  | Session | Revoke one                       |
-| POST   | `/api/photos/:hash` | Bearer  | Upload a device photo (raw JPEG body) |
-| GET    | `/api/photos/:hash` | Session | Serve it                         |
-| POST   | `/api/auth/register` | none   | Create an account — requires an activation code |
-| POST   | `/api/auth/delete-account` | none | Delete your own account (password required) |
-| *      | `/api/admin/*`      | Admin   | Accounts, devices and activation codes |
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/health` | none | Liveness, and what the app probes during setup |
+| POST | `/api/auth/login` | none | Sign in, sets the session cookie |
+| POST | `/api/auth/register` | none | Create an account — requires an activation code |
+| POST | `/api/auth/device` | none | Exchange a password for a device sync token |
+| POST | `/api/auth/change-password` | Session | The only route open while a password change is pending |
+| POST | `/api/auth/delete-account` | none | Delete your own account (password required) |
+| POST | `/api/auth/logout` | none | Clears the cookie |
+| GET | `/api/auth/me` | none | Who you are, or 401 |
+| POST | `/api/sync` | Bearer | Push `{ devices, sales }` for the token's account |
+| GET | `/api/summary` | User | Everything the dashboard renders |
+| GET | `/api/snapshot` | User | Raw stored payload, for backups |
+| GET | `/api/devices` | User | Your own phones |
+| DELETE | `/api/devices/:id` | User | Revoke one of yours (404 if it isn't) |
+| POST | `/api/photos/:hash` | Bearer | Upload a device photo (raw JPEG body) |
+| GET | `/api/photos/:hash` | User | Serve one you own |
+| GET | `/api/admin/accounts` | Admin | Paged, searchable account list |
+| POST | `/api/admin/accounts` | Admin | Create one |
+| GET | `/api/admin/accounts/:id` | Admin | One account with its devices, photos and fund summary |
+| PATCH | `/api/admin/accounts/:id` | Admin | Rename, set role, enable/disable, reset password |
+| DELETE | `/api/admin/accounts/:id` | Admin | Delete, cascading to everything it owns |
+| GET | `/api/admin/accounts/:id/devices` | Admin | That account's phones |
+| DELETE | `/api/admin/devices/:id` | Admin | Revoke any device |
+| GET/POST | `/api/admin/invites` | Admin | List / generate activation codes |
+| DELETE | `/api/admin/invites/:id` | Admin | Revoke one |
+| POST | `/api/admin/invites/purge` | Admin | Drop used and expired |
+
+**Auth column.** *Bearer* is a device sync token — write only, and scoped to the
+account that owns the device. *Session* is any signed-in account. *User* is a
+signed-in non-admin: admins are rejected from fund routes, because the admin
+account manages the server rather than using it. *Admin* is the reverse.
+
+Anything addressed by `:id` under `/api/devices` and `/api/photos` is checked for
+ownership, and returns the same 404 whether the thing doesn't exist or isn't
+yours — so ids can't be probed.
 
 `/api/health` returns `{"service":"fundtracker"}`. The app checks that field
 rather than just the status code — a 200 from an unrelated host is not proof you
@@ -134,17 +154,22 @@ because the page isn't the only possible caller:
 ## Managing accounts and devices
 
 ```sh
-node scripts/set-password.js you@example.com          # create or change a password
+node scripts/set-password.js you@example.com          # set or reset a password
 node scripts/set-password.js you@example.com --admin # ...and grant admin
-node scripts/users.js list
-node scripts/users.js delete you@example.com   # also revokes that account's devices
 
-node scripts/devices.js list
-node scripts/devices.js revoke <id>            # that phone 401s on its next sync
+node scripts/accounts.js list [search]
+node scripts/accounts.js devices <accountId>
+node scripts/accounts.js delete <accountId>          # cascades to its devices,
+                                                     # snapshot and photos
 ```
 
 Any string works as a login — email is a convention, not a constraint, so a
-self-hoster can use a plain username.
+self-hoster can use a plain username. Accounts are addressed by numeric id
+everywhere else, which is what makes renaming one safe: the id doesn't move, so
+its devices, codes, snapshot and photos follow it.
+
+These scripts are the fallback for when nobody can sign in. Everything they do
+is also in `/admin`.
 
 ## Deployment (homeserver, <SERVER_LAN_IP>)
 
@@ -174,9 +199,9 @@ cd ~/fundtracker && docker compose up -d --build
 # create or change a login (prompts, no echo)
 docker exec -it fundtracker node scripts/set-password.js <username>
 
-# see which phones can sync, and revoke one
-docker exec -it fundtracker node scripts/devices.js list
-docker exec -it fundtracker node scripts/devices.js revoke <id>
+# accounts and their devices (day to day, use /admin instead)
+docker exec -it fundtracker node scripts/accounts.js list
+docker exec -it fundtracker node scripts/accounts.js devices <accountId>
 ```
 
 ### Router / DNS prerequisites

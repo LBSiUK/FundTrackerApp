@@ -2,88 +2,81 @@
 
 ## Do these soon
 
-**Raise the `fundtracker` DNS TTL to 3600.** It's still at 300 from the
-setup phase. In IONOS: Domains & SSL → `example.com` → DNS → edit `fundtracker`.
-Nothing left to iterate on, and a permanently short TTL adds pointless lookups
-and gives you no cached answer to fall back on if a DNS server wobbles.
+**Change the admin password.** The `admin` account still holds the default
+`defaultadmin` until someone signs in and replaces it. It can't do anything else
+until then — every route but change-password returns 428 — but it is a published
+default on a server reachable from the internet. Sign in at
+`https://fundtracker.example.com/admin`.
 
-**Create your email login and sign the phone in.** On the server:
-`docker exec -it fundtracker node scripts/set-password.js you@example.com`, then
-remove the old one with `node scripts/users.js delete <old-username>`. On the
-phone: Insights → gear → Sign Out, then sign back in with the email. That swaps
-the shared token for one belonging to this phone. Finally drop
-`FUNDTRACKER_TOKEN` from `~/fundtracker/.env` and `docker compose up -d`.
+**Delete `FUNDTRACKER_TOKEN` from `~/fundtracker/.env`.** It is ignored now that
+sync is per-account. The server logs a reminder at startup while it's set.
 
-**Shorten the session cookie.** It's 30 days and stateless, so a stolen cookie
-stays valid that long and the only remedy is rotating `SESSION_SECRET`.
-`MAX_AGE_MS` in `server/middleware/session.js`.
+**Raise the `fundtracker` DNS TTL to 3600.** Still at 300 from the setup phase.
+IONOS → Domains & SSL → `example.com` → DNS → edit `fundtracker`. Nothing left to
+iterate on, and a permanently short TTL adds pointless lookups.
 
-**~~Put this under git.~~** Done — public at `github.com/LBSiUK/FundTrackerApp`.
-Because it's public, the docs use placeholder hostnames, IPs and usernames; the
-real values are in `docs/LOCAL-NOTES.md`, which is gitignored. Keep it that way:
-anything you write into the docs is world-readable.
+**Shorten the session cookie.** 30 days and stateless, so a stolen cookie stays
+valid that long and the only remedy is rotating `SESSION_SECRET`, which signs
+everyone out. `MAX_AGE_MS` in `server/middleware/session.js`.
+
+**Tidy the migrated JSON.** `~/fundtracker/data/*.json.migrated` are leftovers
+from the move to SQLite. Nothing reads them; delete once you're happy.
 
 ## Known gaps
 
-**Sync is manual.** You have to open Settings and tap Sync Now. Options: sync
-automatically on app background, or after any edit with a debounce. Neither is
-built.
+**Two flows have never been driven end to end.** Everything server-side is
+exercised with curl, and the app compiles and has been screenshotted, but nobody
+has typed a real password through the app's sign-in, nor tapped Reset App and
+watched it return to onboarding. Both are code-correct as far as reading goes.
+Driving the simulator by touch needs accessibility permission that wasn't
+available; see the recording technique in [IOS-APP.md](IOS-APP.md) for what
+*can* be checked without it.
 
-**Photo storage has no overall budget.** Individual uploads are capped at 3MB
-and orphans are pruned on each sync, but nothing stops the total growing. At
-roughly 200–400KB per photo it would take hundreds of devices to matter; worth a
-`du -sh ~/fundtracker/data/photos` if the box ever gets tight.
+**No tests.** Verification has been manual throughout: curl against a running
+server, builds, and screenshots. Two things deserve covering first — the money
+rules in `FundSummary.swift` / `summary.js`, because they're duplicated across
+two languages and must agree, and the auth boundaries (account isolation, admin
+separation, token scoping), because those were verified once by hand and nothing
+would catch a regression.
 
 **The dashboard is read-only.** Editing from a browser would need bidirectional
-sync, which breaks the "full replace" assumption that keeps the whole thing
-simple. See [DECISIONS.md](DECISIONS.md).
+sync, which breaks the full-replace assumption. See [DECISIONS.md](DECISIONS.md).
 
-**No tests.** Verification so far has been manual: running the app in the
-simulator, screenshotting, and curling the API. The money rules in
-`FundSummary.swift` / `summary.js` are the obvious first thing to cover, since
-they're duplicated across two languages and must agree. The auth paths are the
-second — token scoping and revocation were verified by hand with curl, which
-proves they worked once, not that they still do.
+**Sync is manual.** Settings → Sync Now. Could sync on background, or after an
+edit with a debounce. Neither is built.
 
-**Device revocation has no dashboard UI.** `GET /api/devices` and
-`DELETE /api/devices/:id` exist and are session-guarded, but nothing in
-`public/` calls them yet. Use `scripts/devices.js` until it does.
-
-**The onboarding flow hasn't been driven end to end in the simulator.** The
-server side was exercised thoroughly with curl and the app compiles and presents
-the first screen correctly, but nobody has typed a real password into a real
-build and watched a token come back. Do that once before trusting it.
+**Photo storage has no overall budget.** Uploads are capped at 3MB each and
+orphans are pruned per account on each sync, but nothing caps the total. At
+200–400KB a photo it would take a lot to matter; `du -sh ~/fundtracker/data/photos`
+if the box gets tight.
 
 **Currency is hardcoded to GBP**, isolated to `Double.currency` in
 `FundSummary.swift` and the `Intl.NumberFormat` in `public/app.js`.
 
+**The dashboard's web CSS still uses its original green/red palette.** The iOS
+app moved to the brand colours; `server/public/style.css` didn't.
+
 ## Ideas discussed but not started
 
-**Move the website to `homeserver`.** Your site is on InfinityFree and currently
-serves a **self-signed certificate**, so browsers warn on `https://example.com`.
-Moving it to the same box would get a real Let's Encrypt cert automatically,
-drop the anti-bot challenge, and collapse DNS to `@`, `www` and `fundtracker`
-all pointing at `<SERVER_PUBLIC_IP>` — no wildcard, no `cpanel`, no
-`_acme-challenge`. Adding it to the Caddyfile is about four lines.
+**Move the website to `homeserver`.** The site is on InfinityFree and serves a
+self-signed certificate, so browsers warn on `https://example.com`. Moving it
+would get a real Let's Encrypt cert, drop the anti-bot challenge, and collapse
+DNS to `@`, `www` and `fundtracker` — no wildcard, no `cpanel`, no
+`_acme-challenge`. About four lines of Caddyfile.
 
 The work depends on what the site is: static HTML is an hour; PHP + MySQL is a
-real migration (export the database, move uploads, check hardcoded paths);
-WordPress is fiddlier still. Also worth weighing that your home upload speed
-becomes the site's speed for visitors.
-
-Do it as its own change, not alongside anything else.
+real migration; WordPress is fiddlier still. Also worth weighing that home upload
+speed becomes the site's speed for visitors. Do it as its own change.
 
 **Auto-import eBay sales.** eBay has an API; Vinted doesn't, so that side stays
-manual regardless. Would need OAuth token storage and scheduled polling on the
-server.
+manual regardless. Needs OAuth token storage and scheduled polling.
 
-**Per-device profit.** Currently sales and devices are unlinked. If you start
-selling the devices you fix, linking them would let the app show profit per
-repair. Schema change.
+**Per-device profit.** Sales and devices are unlinked. Linking them would show
+profit per repair. Schema change on both sides.
 
 ## If security ever needs tightening
 
 The login page is publicly reachable and will be scanned. If
 `docker logs fundtracker-caddy | grep -c ' 401 '` climbs into the thousands,
-putting Cloudflare or Tailscale in front needs **no application changes** —
-only the exposure layer moves.
+putting Cloudflare or Tailscale in front needs **no application changes** — only
+the exposure layer moves.

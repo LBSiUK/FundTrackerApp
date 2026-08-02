@@ -42,23 +42,22 @@ docker compose logs -f caddy          # TLS / certificate logs
 docker compose restart app            # restart just the app
 docker compose down && docker compose up -d   # full cycle
 
-# change or add a login (prompts twice, no echo, 12 char minimum)
+# set or reset a password (prompts twice, no echo, 12 char minimum)
 docker exec -it fundtracker node scripts/set-password.js <username>
+docker exec -it fundtracker node scripts/set-password.js <username> --admin
 
-# logins
-docker exec -it fundtracker node scripts/users.js list
-docker exec -it fundtracker node scripts/users.js delete <username>
-
-# grant admin (needed for /admin, which is where activation codes come from)
-docker exec -it fundtracker node scripts/set-password.js <email> --admin
-
-# phones allowed to sync
-docker exec -it fundtracker node scripts/devices.js list
-docker exec -it fundtracker node scripts/devices.js revoke <id>
+# accounts and their devices
+docker exec -it fundtracker node scripts/accounts.js list [search]
+docker exec -it fundtracker node scripts/accounts.js devices <accountId>
+docker exec -it fundtracker node scripts/accounts.js delete <accountId>
 ```
 
-Deleting a login also revokes the device tokens issued to it, so a phone can't
-outlive the account it signed in as.
+**Day-to-day account management belongs in `/admin`**, not here. These scripts
+exist for the one case the web interface can't help with: no admin can sign in.
+
+Deleting an account takes its devices, snapshot and photos with it — they're
+foreign keys onto `accounts.id` with `ON DELETE CASCADE`, so nothing is left
+pointing at an account that has gone.
 
 ## Secrets
 
@@ -68,16 +67,24 @@ outlive the account it signed in as.
 |---|---|---|
 | `SESSION_SECRET` | signs login cookies | everyone is signed out |
 | `FUND_DOMAIN` | the hostname Caddy gets a cert for | Caddy re-requests a certificate |
-| `FUNDTRACKER_TOKEN` | *legacy.* The old shared sync token | any phone still using it stops syncing until it signs in |
+| `FUNDTRACKER_TOKEN` | *dead.* The old shared sync token | nothing — it is ignored |
 
-`FUNDTRACKER_TOKEN` is no longer required. Phones now sign in and get their own
-token, stored hashed in `data/devices.json`. Once
-`docker exec -it fundtracker node scripts/devices.js list` shows every phone you
-own, delete the line from `.env` and `docker compose up -d` — the server logs a
-reminder on startup while it's still set.
+`FUNDTRACKER_TOKEN` no longer does anything and should be deleted from `.env`.
+Sync is per-account now, and a server-wide token has no account to attribute a
+sync to. The server logs a reminder at startup while it is still set.
 
-All generated on the server with `openssl rand -hex 32`. To read one:
-`grep FUNDTRACKER_TOKEN ~/fundtracker/.env`.
+Both live keys were generated on the server with `openssl rand -hex 32`.
+
+### The admin account
+
+A server with no accounts creates `admin` with the password `defaultadmin` and
+`must_change_password` set. That flag is the only reason a published default is
+tolerable: the account can sign in and do **nothing else** — every route except
+change-password returns 428 until the password is replaced. Change it at first
+sign-in.
+
+If every admin is ever lost, `set-password.js <name> --admin` from the server is
+the way back in.
 
 To force every browser session to log in again, rotate `SESSION_SECRET` and
 `docker compose up -d`.
@@ -86,26 +93,28 @@ To force every browser session to log in again, rotate `SESSION_SECRET` and
 
 Everything that matters is in `~/fundtracker/data/`:
 
-- `snapshot.json` — your synced records
-- `users.json` — login hashes (mode 600)
-- `devices.json` — hashed device tokens (mode 600). Lose it and every phone
-  needs to sign in again; nothing else breaks.
-- `invites.json` — hashed activation codes (mode 600). Losing it invalidates
-  any unused codes; issue new ones.
-- `photos/` — device photos, named by content hash. Lose them and the next sync
-  re-uploads from the phone, since that's still where they originate.
+- `fundtracker.db` — accounts, devices, activation codes, snapshots and photo
+  ownership. SQLite, plus `-wal` and `-shm` files while the server runs.
+- `photos/` — the photo bytes, named by content hash.
 
 ```sh
+# Consistent copy while the server is running — a plain cp of a WAL database
+# can catch it mid-write.
+docker exec fundtracker sqlite3 /data/fundtracker.db ".backup '/data/backup.db'" 2>/dev/null \
+  || docker compose stop app   # no sqlite3 in the image? stop, copy, start
+
+tar czf ~/fundtracker-backup-$(date +%F).tar.gz -C ~/fundtracker data
+docker compose start app
+
 du -sh ~/fundtracker/data/photos     # how much space photos are taking
 ```
 
-```sh
-tar czf ~/fundtracker-backup-$(date +%F).tar.gz -C ~/fundtracker data
-```
+The phone is the source of truth for fund records, so losing the snapshots costs
+nothing permanent — each phone syncs again and rebuilds them. Losing the accounts
+does matter: everyone would have to be re-created and re-invited.
 
-The phone is the source of truth, so losing `snapshot.json` costs you nothing
-permanent — sync again and it's rebuilt. Losing `users.json` just means running
-`set-password.js` again.
+There may also be `*.json.migrated` files, left by the one-time migration off the
+old JSON storage. They are not read by anything; delete them once you're happy.
 
 **Don't delete the `caddy_data` volume.** It holds the certificate and ACME
 account state. Deleting it forces a fresh certificate request, and Let's Encrypt
@@ -171,8 +180,13 @@ Something answered but `/api/health` didn't return `service: fundtracker`. Eithe
 the address is wrong, or the wildcard DNS trap below sent you to InfinityFree.
 
 **Onboarding says "that server has no accounts yet"**
-`/api/health` reported `setupRequired`. Run
-`docker exec -it fundtracker node scripts/set-password.js <email> --admin`.
+Only older app builds report this; a current server always has an admin after
+startup. If it appears, the database didn't initialise — check `docker compose
+logs app` for the `[bootstrap]` lines.
+
+**The app says "That's the admin account"**
+The admin manages the server and has no fund of its own, so it can't sign in from
+the app or open the dashboard. Use a normal account.
 
 **/admin says "Not an admin"**
 The account signed in is a normal user. Promote it, or sign in as one that
