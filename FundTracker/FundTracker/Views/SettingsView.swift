@@ -40,6 +40,14 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    LabeledContent("Version", value: Self.buildDescription)
+                } header: {
+                    Text("About")
+                } footer: {
+                    Text("Quote this if something looks wrong — it identifies exactly which build is installed.")
+                }
+
+                Section {
                     // Always available: the point of a reset is to get out of
                     // whatever state you're in, including a broken one.
                     Button("Reset App", role: .destructive) { confirmReset = true }
@@ -76,6 +84,16 @@ struct SettingsView: View {
                 DeleteAccountView()
             }
         }
+    }
+
+    /// Shown in Settings so "which build is this?" is answerable without
+    /// guessing. Diagnosing a sync problem across three rounds turned out to
+    /// hinge on that question.
+    private static var buildDescription: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
     }
 
     /// Wipes local records, signs out and returns to onboarding. The account
