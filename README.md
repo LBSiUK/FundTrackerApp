@@ -43,5 +43,6 @@ app and the dashboard will quietly disagree about your balance.
 
 ## Status
 
-Working end to end as of 2026-08-02. Not a git repository yet — see
-[docs/NEXT-STEPS.md](docs/NEXT-STEPS.md).
+Working end to end as of 2026-08-02. Under git since then, published at
+`github.com/LBSiUK/FundTrackerApp` — see
+[docs/NEXT-STEPS.md](docs/NEXT-STEPS.md) for what's outstanding.

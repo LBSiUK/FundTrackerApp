@@ -11,9 +11,10 @@ and gives you no cached answer to fall back on if a DNS server wobbles.
 token from `grep FUNDTRACKER_TOKEN ~/fundtracker/.env` → Sync Now. Until then
 the dashboard is empty.
 
-**Put this under git.** `~/FundTrackerApp` isn't a repository. `server/` already
-has a `.gitignore` covering `node_modules`, `data`, `.env` and logs. Worth doing
-before the next round of changes — there's no undo right now.
+**~~Put this under git.~~** Done — public at `github.com/LBSiUK/FundTrackerApp`.
+Because it's public, the docs use placeholder hostnames, IPs and usernames; the
+real values are in `docs/LOCAL-NOTES.md`, which is gitignored. Keep it that way:
+anything you write into the docs is world-readable.
 
 ## Known gaps
 
