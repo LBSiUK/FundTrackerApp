@@ -1,7 +1,12 @@
 # FundTracker dashboard
 
-Read-only web view of the repair fund. The iOS app is the source of truth and
-pushes its whole dataset here; this side never edits anything.
+Read-only web view of the repair fund, plus the admin interface that manages who
+can use the server. The iOS app is the source of truth for records and pushes its
+whole dataset here; this side never edits them.
+
+Multi-user: many accounts, each with its own records, photos and any number of
+phones. Everything is keyed by `accounts.id`, so an account can be renamed
+without anything else moving.
 
 ## Access model
 
@@ -31,9 +36,9 @@ Failed sign-ins are throttled to 10 per IP per 15 minutes, shared across
 by switching endpoints. Unknown accounts run a dummy hash and return the same
 message as a wrong password, so the response doesn't reveal which exist.
 
-`FUNDTRACKER_TOKEN` still works if set — the single shared token from before
-device tokens existed, kept so an already-configured phone doesn't break. Drop
-it from `.env` once every device has signed in.
+`FUNDTRACKER_TOKEN` is dead. It was a single shared token from before accounts
+existed, and per-account sync leaves it nothing to attribute a write to. The
+server ignores it and logs a reminder at startup if it's still in `.env`.
 
 ## Endpoints
 
@@ -84,8 +89,10 @@ SQLite at `$FUNDTRACKER_DATA_DIR/fundtracker.db` (a Docker volume at `/data`),
 through Node's built-in `node:sqlite` — no native module, no build toolchain in
 the image. Photo bytes sit beside it in `photos/`.
 
-Back up by copying the whole directory. Foreign keys are on and WAL is enabled,
-so copy while the server is stopped, or use `sqlite3 ... ".backup"`.
+Back up by copying the whole directory. Foreign keys are on — that's what makes
+deleting an account take its devices, snapshot and photo ownership with it — and
+WAL is enabled, so copy while the server is stopped or use `sqlite3 ... ".backup"`
+rather than a plain `cp` of a live database.
 
 Accounts, devices, invites, snapshots and photo ownership are all keyed by
 `accounts.id`, which is what makes renaming an account safe.
@@ -114,9 +121,9 @@ No `FUNDTRACKER_TOKEN` needed: the app gets its own token by signing in.
 
 ## Accounts, roles and activation codes
 
-Accounts have a role (`user` or `admin`) and an active flag. Records written
-before roles existed are plain `{ password }` and read as active users, so
-nothing had to be migrated.
+Accounts have a numeric id, a unique username, a role (`user` or `admin`), an
+active flag and a `must_change_password` flag. The username is a label and
+nothing else references it.
 
 **Registration is closed.** `POST /api/auth/register` creates nothing without a
 one-time activation code, which only an admin can issue. That's what keeps a
