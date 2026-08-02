@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// Removes the account from the server, then clears this phone.
+/// Removes the account from the server, then clears this device.
 ///
 /// Asks for the password rather than relying on the sync token already stored
 /// here. The token is a write-scoped credential — "can upload records" should
@@ -38,13 +38,13 @@ struct DeleteAccountView: View {
                         .textContentType(.password)
                         .disabled(isBusy)
 
-                    Toggle("Also erase records on this phone", isOn: $alsoEraseLocal)
+                    Toggle("Also erase records on this device", isOn: $alsoEraseLocal)
                         .disabled(isBusy)
                 } footer: {
                     if alsoEraseLocal {
                         Text("Your \(devices.count) device\(devices.count == 1 ? "" : "s") and \(sales.count) sale\(sales.count == 1 ? "" : "s") will be deleted here too.")
                     } else {
-                        Text("Your records stay on this phone. You can sign in to another server later.")
+                        Text("Your records stay on this device. You can sign in to another server later.")
                     }
                 }
 

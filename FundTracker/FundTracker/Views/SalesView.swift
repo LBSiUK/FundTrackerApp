@@ -47,6 +47,7 @@ struct SalesView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Palette.background)
+            .syncOnRefresh()
             .navigationTitle("Sales Log")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

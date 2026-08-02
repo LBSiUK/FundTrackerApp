@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(SyncSettings.self) private var settings
     @Environment(SyncService.self) private var sync
 
@@ -26,38 +25,18 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button {
-                        Task {
-                            await sync.sync(devices: devices, sales: sales, settings: settings)
-                        }
-                    } label: {
-                        HStack {
-                            Text(sync.isSyncing ? "Syncing…" : "Sync Now")
-                            Spacer()
-                            if sync.isSyncing { ProgressView() }
-                        }
-                    }
-                    .disabled(!settings.isConfigured || sync.isSyncing)
-
                     if let lastSyncedAt = settings.lastSyncedAt {
                         LabeledContent(
                             "Last synced",
                             value: lastSyncedAt.formatted(date: .abbreviated, time: .shortened)
                         )
+                    } else {
+                        LabeledContent("Last synced", value: "Never")
                     }
                 } header: {
                     Text("Sync")
                 } footer: {
                     statusFooter
-                }
-
-                Section {
-                    LabeledContent("Devices", value: "\(devices.count)")
-                    LabeledContent("Sales", value: "\(sales.count)")
-                } header: {
-                    Text("What Gets Sent")
-                } footer: {
-                    Text("Device photos are uploaded too, and are visible to anyone who can sign in to your dashboard.")
                 }
 
                 Section {
@@ -71,38 +50,27 @@ struct SettingsView: View {
                 } header: {
                     Text("Danger Zone")
                 } footer: {
-                    Text("Reset erases the devices and sales on this phone. Delete Account also removes your account from the server.")
+                    Text("Reset erases the devices and sales on this device and starts setup again. Delete Account also removes your account from the server.")
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Palette.background)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
             .fullScreenCover(isPresented: $showOnboarding) {
                 OnboardingView()
             }
-            .confirmationDialog(
-                "Sign out of the dashboard?",
-                isPresented: $confirmSignOut,
-                titleVisibility: .visible
-            ) {
+            .alert("Sign out of your server?", isPresented: $confirmSignOut) {
+                Button("Cancel", role: .cancel) {}
                 Button("Sign Out", role: .destructive) { settings.signOut() }
             } message: {
-                Text("Your devices and sales stay on this phone. The dashboard keeps its last synced copy until another device replaces it.")
+                Text("Your devices and sales stay on this device. The server keeps its last synced copy until another device replaces it.")
             }
-            .confirmationDialog(
-                "Erase everything on this phone?",
-                isPresented: $confirmReset,
-                titleVisibility: .visible
-            ) {
+            .alert("Erase everything on this device?", isPresented: $confirmReset) {
+                Button("Cancel", role: .cancel) {}
                 Button("Erase Everything", role: .destructive) { resetEverything() }
             } message: {
-                Text("Deletes every device, part and sale stored here, signs out, and starts setup again. Your account and anything already synced to the dashboard are left alone. This can't be undone.")
+                Text("Deletes every device, part and sale stored here, signs out, and starts setup again. Your account and anything already synced are left alone. This can't be undone.")
             }
             .sheet(isPresented: $showDeleteAccount) {
                 DeleteAccountView()
@@ -112,16 +80,16 @@ struct SettingsView: View {
 
     /// Wipes local records, signs out and returns to onboarding. The account
     /// and the server's copy are untouched — this is "start again on this
-    /// phone", not "delete everything I own".
+    /// device", not "delete everything I own".
     private func resetEverything() {
         for device in devices { modelContext.delete(device) }
         for sale in sales { modelContext.delete(sale) }
         try? modelContext.save()
 
         // Clears hasEverConnected too, so the offline/online question is
-        // genuinely open again rather than half-answered.
+        // genuinely open again rather than half-answered. ContentView watches
+        // hasSeenOnboarding, so clearing it is what brings setup back.
         settings.reset()
-        dismiss()
     }
 
     // MARK: - Connection
@@ -137,7 +105,7 @@ struct SettingsView: View {
 
             Button("Sign Out", role: .destructive) { confirmSignOut = true }
         } header: {
-            Text("Dashboard")
+            Text("Server")
         } footer: {
             if settings.isUsingLegacyToken {
                 Text("This phone still uses the old shared server token. Sign out and back in to give it its own, which can be revoked on its own.")
@@ -150,11 +118,11 @@ struct SettingsView: View {
     @ViewBuilder
     private var disconnectedSection: some View {
         Section {
-            Button("Connect to a Dashboard") { showOnboarding = true }
+            Button("Set Up Server Sync") { showOnboarding = true }
         } header: {
-            Text("Dashboard")
+            Text("Server")
         } footer: {
-            Text("Optional. Everything works on this phone without one — a dashboard just lets you view the same figures in a browser.")
+            Text("Connection to a server is optional, however it will allow you to sync your data across devices.")
         }
     }
 
@@ -162,7 +130,7 @@ struct SettingsView: View {
     private var statusFooter: some View {
         switch sync.state {
         case .success:
-            Label("Pushed to the dashboard.", systemImage: "checkmark.circle.fill")
+            Label("Up to date.", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(Palette.accent)
         case .uploadingPhotos(let done, let total):
             Text("Uploading photos… \(done) of \(total)")
@@ -173,7 +141,7 @@ struct SettingsView: View {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(Palette.secondary)
         case .idle, .syncing:
-            Text("Sends everything to your dashboard, replacing what's there. Device photos are uploaded too.")
+            Text("Syncs automatically every minute, and whenever you pull down to refresh. Device photos are uploaded too.")
         }
     }
 }

@@ -34,6 +34,7 @@ struct DevicesView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Palette.background)
+            .syncOnRefresh()
             .navigationTitle("Devices")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {

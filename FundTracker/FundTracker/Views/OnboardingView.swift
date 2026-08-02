@@ -102,7 +102,7 @@ struct OnboardingView: View {
                 } label: {
                     choice(
                         title: "Use an account",
-                        detail: "Sync to a server you run, and view your fund in a browser.",
+                        detail: "Sync across your devices, and view your fund in a browser.",
                         icon: "icloud.and.arrow.up"
                     )
                 }
@@ -114,7 +114,7 @@ struct OnboardingView: View {
                 } label: {
                     choice(
                         title: "Stay offline",
-                        detail: "Keep everything on this phone. You can create an account later and bring these records with you.",
+                        detail: "Keep everything on this device. You can set up server sync later and bring these records with you.",
                         icon: "iphone"
                     )
                 }
@@ -164,14 +164,15 @@ struct OnboardingView: View {
     // MARK: - Step 1
 
     private var addressStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "externaldrive.badge.wifi")
-                    .font(.largeTitle)
+                    .font(.system(size: 76, weight: .light))
                     .foregroundStyle(.tint)
+                    .padding(.bottom, 4)
 
-                Text("Where is your dashboard?")
-                    .font(.title2.bold())
+                Text("Where is your server?")
+                    .font(.title.bold())
 
                 Text("FundTracker syncs to a server you run yourself. Enter its address to get started.")
                     .foregroundStyle(.secondary)
@@ -189,6 +190,10 @@ struct OnboardingView: View {
             Text("https:// is assumed if you leave it out.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            // Pushes Continue toward the bottom, within thumb reach, instead of
+            // leaving dead space under it.
+            Spacer(minLength: 24)
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -216,16 +221,20 @@ struct OnboardingView: View {
     // MARK: - Step 2
 
     private var signInStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "lock.shield")
-                    .font(.largeTitle)
+                    .font(.system(size: 76, weight: .light))
                     .foregroundStyle(.tint)
+                    .padding(.bottom, 4)
 
                 Text(mode == .signIn ? "Sign in" : "Create an account")
-                    .font(.title2.bold())
+                    .font(.title.bold())
 
-                Text("Your password goes to **\(confirmedHost)** and isn't kept on this phone. It's exchanged for a sync token that can upload records but can't read them back.")
+                // Naming the host is the point of this line: it's the last
+                // moment before a password is sent to whatever address was
+                // typed on the previous screen.
+                Text("You're connecting to **\(confirmedHost)**")
                     .foregroundStyle(.secondary)
             }
 

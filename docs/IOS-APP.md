@@ -37,8 +37,8 @@ as you buy them. Empty state offers to add the first device.
 tap a row to edit. Shows `+£127.60` with `of £145.00` underneath when fees were
 deducted, and hides that second line when there were none.
 
-**Insights** — the headline cards, the affordability card, two charts, a
-platform breakdown, and the gear icon for Settings.
+**Insights** — the headline cards, the affordability card, two charts and a
+platform breakdown.
 
 **Onboarding** (full-screen on first launch) — the welcome screen asks offline or
 online, then server address, then sign in *or* create an account. Steps carry an
@@ -71,9 +71,9 @@ the app is the source of truth and works with no server at all. Once dismissed
 it doesn't reappear (`hasSeenOnboarding`); Settings can start it again.
 
 **Settings** (sheet from Insights) — which server and account this phone is
-signed in to, Sign Out, Sync Now, last-synced. It shows the connected host, not
-an editable token field: the token is issued by the server now, so there's
-nothing to type. A Danger Zone at the bottom holds **Reset App** (erases the
+signed in to, Sign Out, Sync Now, last-synced. It shows the connected host, not an editable
+token field: the token is issued by the server now, so there's nothing to type.
+There is no Sync button — see below. A Danger Zone at the bottom holds **Reset App** (erases the
 devices and sales on this phone, leaving the account alone) and **Delete
 Account**.
 
@@ -134,6 +134,27 @@ laid over it in a ZStack rather than a bundled image, so it stays sharp at any
 size and takes the tint in both colour schemes. `BrandLockup` adds the wordmark
 in **Didot**, which ships with iOS; if it were ever missing SwiftUI falls back to
 the system face rather than failing to draw.
+
+## Syncing
+
+Automatic. `ContentView` runs a `.task` loop that pushes every 60 seconds while
+the app is foregrounded, and `.syncOnRefresh()` adds pull-to-refresh to Devices,
+Sales and Insights for when a minute is too long to wait. There is no manual
+Sync button.
+
+The loop lives in the view rather than in `SyncService` deliberately: SwiftUI
+cancels a `.task` when the view goes away, so there's no timer to remember to
+invalidate and nothing keeps running after the app leaves the foreground.
+
+`syncOnRefresh()` is a `ViewModifier` holding its own `@Query`, so the three
+screens that use it don't have to know anything about sync to offer it.
+
+## Alerts, not confirmation dialogs, for destructive actions
+
+`.confirmationDialog` anchors to the view it's attached to, which put the Erase
+Everything sheet in the wrong place entirely — floating mid-screen with a tail
+pointing at nothing. `.alert` centres predictably and handles a paragraph of
+explanation, which these need.
 
 ## Colour
 

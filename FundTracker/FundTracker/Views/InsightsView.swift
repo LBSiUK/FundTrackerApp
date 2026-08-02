@@ -7,7 +7,6 @@ struct InsightsView: View {
     @Query private var devices: [Device]
 
     @Environment(SyncSettings.self) private var settings
-    @State private var isShowingSettings = false
 
     private var summary: FundSummary {
         FundSummary(sales: sales, devices: devices)
@@ -37,16 +36,7 @@ struct InsightsView: View {
             }
             .background(Palette.background)
             .navigationTitle("Insights")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Settings", systemImage: "gearshape") {
-                        isShowingSettings = true
-                    }
-                }
-            }
-            .sheet(isPresented: $isShowingSettings) {
-                SettingsView()
-            }
+            .syncOnRefresh()
         }
     }
 

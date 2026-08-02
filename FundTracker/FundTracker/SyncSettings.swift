@@ -53,7 +53,7 @@ final class SyncSettings {
         didSet { UserDefaults.standard.set(hasSeenOnboarding, forKey: Self.onboardedKey) }
     }
 
-    /// How this phone was set up.
+    /// How this device was set up.
     enum Mode: String {
         case unset
         case offline
@@ -122,7 +122,7 @@ final class SyncSettings {
         accountEmail = ""
         deviceId = ""
         lastSyncedAt = nil
-        // `hasEverConnected` deliberately survives: this phone's records have
+        // `hasEverConnected` deliberately survives: this device's records have
         // been under an account, so offline is no longer on the table.
     }
 

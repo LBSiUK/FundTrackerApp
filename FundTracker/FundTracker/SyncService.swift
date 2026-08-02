@@ -413,7 +413,7 @@ final class SyncService {
     }
 
     /// Deletes the account on the server. Password-gated deliberately: the sync
-    /// token on this phone can write records, and that shouldn't be enough to
+    /// token on this device can write records, and that shouldn't be enough to
     /// destroy the account.
     func deleteAccount(address: String, email: String, password: String) async throws {
         guard let base = ServerAddress.normalise(address) else { throw SyncError.invalidURL }
