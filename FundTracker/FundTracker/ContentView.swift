@@ -53,7 +53,13 @@ struct ContentView: View {
         .fullScreenCover(isPresented: showOnboarding) {
             OnboardingView()
         }
-        .task {
+        // Keyed on the token, so signing in restarts this. A plain `.task`
+        // runs once when the view appears — which is at launch, before any
+        // credential exists — and dismissing the onboarding cover does not
+        // bring it back, because ContentView never went away. That is exactly
+        // why signing in after a reset showed nothing: restore had already run
+        // and returned early, and nothing ran it again.
+        .task(id: settings.token) {
             await restoreIfNeeded()
             await autoSync()
         }

@@ -77,11 +77,11 @@ server's `/admin` page; there is no open sign-up. See
 the app is the source of truth and works with no server at all. Once dismissed
 it doesn't reappear (`hasSeenOnboarding`); Settings can start it again.
 
-**Settings** (sheet from Insights) — which server and account this phone is
+**Settings** (its own tab) — which server and account this device is
 signed in to, Sign Out, Sync Now, last-synced. It shows the connected host, not an editable
 token field: the token is issued by the server now, so there's nothing to type.
 There is no Sync button — see below. A Danger Zone at the bottom holds **Reset App** (erases the
-devices and sales on this phone, leaving the account alone) and **Delete
+devices and sales on this device, leaving the account alone) and **Delete
 Account**.
 
 **Delete Account** (`DeleteAccountView`) asks for the password rather than
@@ -156,6 +156,13 @@ Automatic, and two-way.
 and pulls the account's records when this device has none — that's what makes
 signing in after a reset show your data again. It must stay ahead of the first
 push: an empty device doing a full replace is how the records got lost.
+
+It hangs off **`.task(id: settings.token)`**, and the `id:` is the load-bearing
+part. A plain `.task` runs once when the view appears — at launch, before any
+credential exists — and dismissing the onboarding cover doesn't bring it back,
+because `ContentView` never went away. Keyed on the token, signing in restarts
+it. This is the second time a plain `.task` has silently broken something here;
+see the onboarding cover binding above.
 
 Records are fetched fresh from the model context at the moment of syncing rather
 than captured from an `@Query`. A debounced task closing over a query result

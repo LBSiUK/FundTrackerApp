@@ -108,9 +108,9 @@ struct SettingsView: View {
             Text("Server")
         } footer: {
             if settings.isUsingLegacyToken {
-                Text("This phone still uses the old shared server token. Sign out and back in to give it its own, which can be revoked on its own.")
+                Text("This device still uses an old shared server token. Sign out and back in to give it its own, which can be revoked separately.")
             } else {
-                Text("This phone holds a sync token, not your password. It can upload records but can't read them back.")
+                Text("This device holds a sync token, not your password. It syncs this account's records both ways, and can't reach any other account.")
             }
         }
     }

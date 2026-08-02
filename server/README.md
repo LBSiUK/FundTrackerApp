@@ -14,11 +14,13 @@ Two different callers, two different credentials:
 
 | Caller        | Credential                        | Reaches                          |
 |---------------|-----------------------------------|----------------------------------|
-| iOS app       | Per-device Bearer token           | `POST /api/sync` only            |
+| iOS app       | Per-device Bearer token           | `POST`/`GET /api/sync`, photos — its own account only |
 | You, a browser| Email + password → session cookie | `GET /api/summary`, `/api/snapshot`, `/api/devices` |
 
-The token can't read your data and the session can't push data. That asymmetry
-is the point: a token lifted off a phone shows an attacker nothing.
+The session can't push data, and a token can only reach the one account it
+belongs to. A token used to be write-only; it can now read its own account's
+records so a reset device can restore itself, which is a deliberate trade
+recorded in DECISIONS.md.
 
 **Device tokens.** The app signs in once with your email and password, and the
 server hands back a random 32-byte token belonging to that phone alone. The
