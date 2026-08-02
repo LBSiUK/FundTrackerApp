@@ -142,6 +142,24 @@ isn't the only possible caller: the last active admin can't be deleted, demoted
 or deactivated; you can't demote or deactivate yourself; and disabling an account
 or changing its password revokes its device tokens.
 
+## Sync became two-way — a reversal, and a data-loss fix
+
+Push-only worked while one phone was the sole source of truth. It stopped working
+the moment a device could have an empty store legitimately: reset the app, sign
+in again, and within a minute the automatic push replaced the account's records
+with nothing. The reported symptom was "I can't see anything I already added";
+the actual behaviour was worse than that.
+
+`GET /api/sync` is the fix, and it cost the read/write asymmetry — a device token
+can read its own account now, because a device that can't read can't recover.
+Still scoped to that one account.
+
+Restore runs before the first push and only when the device has no records, so a
+device that *does* have records still wins — which is what keeps the offline →
+online path uploading rather than wiping. The server independently refuses to
+replace records with an empty set, because the app shouldn't be the only thing
+standing between a bug and someone's data.
+
 ## Photos are uploaded now — a reversal
 
 They used to stay on the phone deliberately. They're uploaded and shown on the

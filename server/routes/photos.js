@@ -15,6 +15,25 @@ const { requireUser } = require('../middleware/session');
 
 const router = express.Router();
 
+/**
+ * Reading a photo needs either a browser session or the owning device's token.
+ * The token path is what lets a reset device restore its images; either way the
+ * account is resolved first and ownership checked against it.
+ */
+function requireReader(req, res, next) {
+  if ((req.get('authorization') || '').startsWith('Bearer ')) {
+    return requireToken(req, res, () => {
+      req.readerAccountId = req.accountId;
+      next();
+    });
+  }
+
+  requireUser(req, res, () => {
+    req.readerAccountId = req.account.id;
+    next();
+  });
+}
+
 // Raw body rather than multipart: one photo per request, so form-data framing
 // would add a parser dependency and buy nothing.
 const rawJpeg = express.raw({ type: 'image/jpeg', limit: photos.MAX_BYTES });
@@ -38,11 +57,11 @@ router.post('/:hash', requireToken, rawJpeg, (req, res, next) => {
   }
 });
 
-router.get('/:hash', requireUser, (req, res, next) => {
+router.get('/:hash', requireReader, (req, res, next) => {
   try {
     const { hash } = req.params;
 
-    if (!photos.has(req.account.id, hash)) {
+    if (!photos.has(req.readerAccountId, hash)) {
       return res.status(404).json({ error: 'not_found', message: 'No such photo.' });
     }
 

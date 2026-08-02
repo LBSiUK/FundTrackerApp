@@ -150,10 +150,22 @@ reach rather than floating under the content that precedes them.
 
 ## Syncing
 
-Automatic. `ContentView` runs a `.task` loop that pushes every 60 seconds while
-the app is foregrounded, and `.syncOnRefresh()` adds pull-to-refresh to Devices,
-Sales and Insights for when a minute is too long to wait. There is no manual
-Sync button.
+Automatic, and two-way.
+
+**Restore comes first.** `ContentView.restoreIfNeeded` runs before the sync loop
+and pulls the account's records when this device has none — that's what makes
+signing in after a reset show your data again. It must stay ahead of the first
+push: an empty device doing a full replace is how the records got lost.
+
+Records are fetched fresh from the model context at the moment of syncing rather
+than captured from an `@Query`. A debounced task closing over a query result
+pushes whatever the view held when the timer started, not what's there when it
+fires.
+
+**Changes sync immediately.** `ModelContext.didSave` drives a 2-second debounced
+push, so a burst of edits becomes one sync and no editor has to remember to ask. `ContentView` runs a `.task` loop pushes every 60 seconds as a backstop, and
+`.syncOnRefresh()` adds pull-to-refresh to Devices, Sales and Insights. There is
+no manual Sync button.
 
 The loop lives in the view rather than in `SyncService` deliberately: SwiftUI
 cancels a `.task` when the view goes away, so there's no timer to remember to

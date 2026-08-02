@@ -100,8 +100,9 @@ sums otherwise surface as `204.60000000000002`.
 | iOS app | Per-device Bearer token | `POST /api/sync` only — write, no read |
 | Browser | email + password → session cookie | `GET /api/summary`, `/api/snapshot`, `/api/devices` — read, no write |
 
-The token cannot read your data; the login cannot push data. If the token leaked
-off the phone, nobody could view your records with it.
+The login cannot push data. The token can now read **its own account's records
+and photos** — see "Sync is two-way" below — but nothing else, and it still can't
+reach another account, the admin interface, or anyone else's anything.
 
 ## Connecting a phone
 
@@ -147,6 +148,40 @@ account can't be taken back offline, because the server also holds them and
 `hasEverConnected`, which signing out deliberately does not clear. Only a full
 Reset does, and that discards the records too, so the question is genuinely
 open again.
+
+## Sync is two-way
+
+Sync was push-only: the phone was the source of truth and the server a viewer.
+That broke the moment a device could legitimately have an empty store — after
+Reset App, or on a second device — because the first automatic push would replace
+the account's records with nothing. **That was data loss, not just a missing
+feature.**
+
+```
+POST /api/sync   push this device's records (full replace)
+GET  /api/sync   pull the account's records back
+```
+
+The app pulls on launch **when it has no records of its own**, before the first
+push. Non-empty stays authoritative: a device with records pushes them, so
+connecting after using the app offline still uploads what you have rather than
+wiping it.
+
+Two guards, because one of them shouldn't be the only one:
+
+- The **app** restores before it ever pushes.
+- The **server** refuses a push that would replace stored records with an empty
+  set (`409 would_erase`) unless the client says `allowEmpty` — which is how a
+  deliberate "delete everything" still works.
+
+This is what cost the read/write asymmetry. A device token can now read its own
+account, because a device that can't read can't recover. Reading is still scoped
+to the token's own account, so a leaked token exposes one account's records
+rather than nothing — worth stating plainly, because the previous property was
+stronger.
+
+Photos come down with the records, using the same token; `GET /api/photos/:hash`
+accepts either a session or the owning device's token.
 
 ## Photos
 

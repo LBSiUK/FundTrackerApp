@@ -61,6 +61,41 @@ private struct ServerError: Decodable {
     let message: String
 }
 
+private struct RestorePayload: Decodable {
+    let syncedAt: String?
+    let devices: [RestoreDevice]
+    let sales: [RestoreSale]
+}
+
+private struct RestoreDevice: Decodable {
+    let name: String
+    let status: String
+    let symbolName: String
+    let notes: String
+    let dateAdded: Date
+    let photoHash: String?
+    let parts: [RestorePart]
+}
+
+private struct RestorePart: Decodable {
+    let name: String
+    let unitCost: Double
+    let quantity: Int
+    let isPurchased: Bool
+    let purchaseDate: Date?
+    let supplier: String
+}
+
+private struct RestoreSale: Decodable {
+    let title: String
+    let platform: String
+    let date: Date
+    let grossAmount: Double
+    let fees: Double
+    let shippingCost: Double
+    let notes: String
+}
+
 private struct HealthResponse: Decodable {
     let ok: Bool
     let service: String
@@ -101,6 +136,7 @@ enum SyncError: LocalizedError {
     case passwordMismatch
     case passwordChangeRequired
     case adminHasNoFund
+    case wouldErase
     case server(String)
     case transport(String)
 
@@ -136,12 +172,24 @@ enum SyncError: LocalizedError {
             "Set a new password on the website before connecting the app."
         case .adminHasNoFund:
             "That's the admin account. Sign in with a normal account to sync."
+        case .wouldErase:
+            "The server has records this device doesn't. Pull them down before syncing."
         case .server(let message):
             message
         case .transport(let message):
             message
         }
     }
+}
+
+private extension ISO8601DateFormatter {
+    static let plain = ISO8601DateFormatter()
+
+    static let withFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
 
 // MARK: - Server address
@@ -223,6 +271,13 @@ final class SyncService {
         } catch {
             state = .failure(error.localizedDescription)
         }
+    }
+
+    /// Records that a restore failed, so Settings can say so. Kept separate
+    /// from a sync failure because the remedy differs: this one means "your
+    /// records are still on the server", not "your changes didn't reach it".
+    func reportRestoreFailure(_ error: Error) {
+        state = .failure("Couldn't fetch your records: \(error.localizedDescription)")
     }
 
     /// Sends only the photos the server said it was missing. Returns how many
@@ -361,6 +416,7 @@ final class SyncService {
         case "password_mismatch": return .passwordMismatch
         case "password_change_required": return .passwordChangeRequired
         case "admin_has_no_fund": return .adminHasNoFund
+        case "would_erase": return .wouldErase
         case "invalid_credentials": return .badCredentials
         case "too_many_attempts": return .tooManyAttempts
         default: break
@@ -432,6 +488,96 @@ final class SyncService {
         guard (200..<300).contains(response.statusCode) else {
             throw failure(status: response.statusCode, body: data)
         }
+    }
+
+    // MARK: Restore
+
+    /// Fetches this account's records from the server.
+    ///
+    /// The counterpart to `push`. Needed because the store on this device can
+    /// legitimately be empty — after a reset, or on a second device — and
+    /// without it the first automatic push would replace the account's records
+    /// with nothing.
+    func fetchRemote(settings: SyncSettings) async throws -> RemoteSnapshot {
+        guard let base = ServerAddress.normalise(settings.serverURL) else {
+            throw SyncError.invalidURL
+        }
+
+        var request = URLRequest(url: base.appendingPathComponent("api/sync"))
+        request.setValue("Bearer \(settings.token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+
+        let (data, http) = try await send(request)
+        if http.statusCode == 401 { throw SyncError.unauthorized }
+        guard (200..<300).contains(http.statusCode) else {
+            throw failure(status: http.statusCode, body: data)
+        }
+
+        let decoder = JSONDecoder()
+        // `.iso8601` alone rejects fractional seconds. The app's own encoder
+        // never emits them, but a record written by the migration or by hand
+        // can, and a whole restore failing over a decimal point isn't a
+        // trade worth making.
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            if let date = ISO8601DateFormatter.withFractionalSeconds.date(from: text) { return date }
+            if let date = ISO8601DateFormatter.plain.date(from: text) { return date }
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "Unrecognised date: \(text)")
+            )
+        }
+        let payload = try decoder.decode(RestorePayload.self, from: data)
+
+        return RemoteSnapshot(
+            devices: payload.devices.map { device in
+                RemoteSnapshot.Device(
+                    name: device.name,
+                    status: DeviceStatus(rawValue: device.status) ?? .needsParts,
+                    symbolName: device.symbolName,
+                    notes: device.notes,
+                    dateAdded: device.dateAdded,
+                    photoHash: device.photoHash,
+                    parts: device.parts.map {
+                        RemoteSnapshot.Part(
+                            name: $0.name,
+                            unitCost: $0.unitCost,
+                            quantity: $0.quantity,
+                            isPurchased: $0.isPurchased,
+                            purchaseDate: $0.purchaseDate,
+                            supplier: $0.supplier
+                        )
+                    }
+                )
+            },
+            sales: payload.sales.map { sale in
+                RemoteSnapshot.Sale(
+                    title: sale.title,
+                    platform: SalePlatform(rawValue: sale.platform) ?? .other,
+                    date: sale.date,
+                    grossAmount: sale.grossAmount,
+                    fees: sale.fees,
+                    shippingCost: sale.shippingCost,
+                    notes: sale.notes
+                )
+            }
+        )
+    }
+
+    /// Downloads one photo by hash. Returns nil rather than throwing — a
+    /// missing image shouldn't cost you the restore of everything else.
+    func fetchPhoto(hash: String, settings: SyncSettings) async -> Data? {
+        guard let base = ServerAddress.normalise(settings.serverURL) else { return nil }
+
+        var request = URLRequest(url: base.appendingPathComponent("api/photos/\(hash)"))
+        request.setValue("Bearer \(settings.token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+
+        guard
+            let (data, http) = try? await send(request),
+            (200..<300).contains(http.statusCode)
+        else { return nil }
+
+        return data
     }
 
     // MARK: Transport
