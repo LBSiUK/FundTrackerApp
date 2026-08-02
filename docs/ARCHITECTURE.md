@@ -177,6 +177,23 @@ Photo writes use the device token and photo reads use the browser session, so
 the read/write split survives: a token lifted off a phone can add a photo but
 still can't look at one.
 
+## Accounts
+
+Two roles: `user` and `admin`. Admins reach `/admin`, where accounts are managed
+and activation codes are issued. Everyone else gets the dashboard only. The role
+is read from `users.json` on every request rather than carried in the session
+cookie, so demoting an admin takes effect immediately instead of whenever their
+30-day session happens to lapse.
+
+**Registration is closed by design.** Creating an account requires a one-time
+activation code, so a login page on the public internet isn't also a sign-up
+page. The code is validated and marked used in a single operation — checking
+first and marking later is how a code gets redeemed twice.
+
+Deleting an account revokes its device tokens with it, so a phone can't outlive
+the account it authenticated as. The same holds for disabling one or changing
+its password.
+
 ## Time zones
 
 Month bucketing is done in **UTC on both sides**. Doing it in local time and

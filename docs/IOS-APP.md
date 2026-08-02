@@ -38,7 +38,9 @@ deducted, and hides that second line when there were none.
 **Insights** — the headline cards, the affordability card, two charts, a
 platform breakdown, and the gear icon for Settings.
 
-**Onboarding** (full-screen on first launch) — server address, then sign-in. See
+**Onboarding** (full-screen on first launch) — server address, then sign in *or*
+create an account. Creating one needs a one-time activation code issued from the
+server's `/admin` page; there is no open sign-up. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the flow. Offers "Set Up Later", because
 the app is the source of truth and works with no server at all. Once dismissed
 it doesn't reappear (`hasSeenOnboarding`); Settings can start it again.
@@ -46,7 +48,14 @@ it doesn't reappear (`hasSeenOnboarding`); Settings can start it again.
 **Settings** (sheet from Insights) — which server and account this phone is
 signed in to, Sign Out, Sync Now, last-synced. It shows the connected host, not
 an editable token field: the token is issued by the server now, so there's
-nothing to type.
+nothing to type. A Danger Zone at the bottom holds **Reset App** (erases the
+devices and sales on this phone, leaving the account alone) and **Delete
+Account**.
+
+**Delete Account** (`DeleteAccountView`) asks for the password rather than
+reusing the sync token already on the phone. The token is write-scoped — "can
+upload records" shouldn't quietly imply "can destroy the account". Erasing local
+records alongside it is a toggle, defaulting on.
 
 ## Conventions worth keeping
 
@@ -128,6 +137,24 @@ March and May as "M".
 
 The platform breakdown is a ranked list rather than a pie, which reads better
 for three or four categories and avoids needing a categorical colour palette.
+
+## Building an IPA to sideload
+
+```sh
+xcodebuild -project FundTracker.xcodeproj -scheme FundTracker \
+  -configuration Release -sdk iphoneos -derivedDataPath build/device \
+  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
+
+mkdir -p Payload && cp -R build/device/Build/Products/Release-iphoneos/FundTracker.app Payload/
+zip -qry FundTracker.ipa Payload && rm -rf Payload
+```
+
+Deliberately **unsigned**: Sideloadly, AltStore and SideStore re-sign with your
+own Apple ID as they install, so a signature here would be discarded. The result
+is a `Payload/FundTracker.app` zip, which is all an IPA is.
+
+Free Apple IDs give a 7-day signature and a 3-app limit — that's an Apple
+constraint, not something the build can change.
 
 ## Testing without a device
 

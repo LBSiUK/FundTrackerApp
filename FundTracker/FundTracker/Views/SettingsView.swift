@@ -9,8 +9,12 @@ struct SettingsView: View {
     @Query private var devices: [Device]
     @Query private var sales: [Sale]
 
+    @Environment(\.modelContext) private var modelContext
+
     @State private var showOnboarding = false
     @State private var confirmSignOut = false
+    @State private var confirmReset = false
+    @State private var showDeleteAccount = false
 
     var body: some View {
         NavigationStack {
@@ -53,7 +57,20 @@ struct SettingsView: View {
                 } header: {
                     Text("What Gets Sent")
                 } footer: {
-                    Text("Device photos stay on this phone — they aren't uploaded.")
+                    Text("Device photos are uploaded too, and are visible to anyone who can sign in to your dashboard.")
+                }
+
+                Section {
+                    Button("Reset App", role: .destructive) { confirmReset = true }
+                        .disabled(devices.isEmpty && sales.isEmpty)
+
+                    if settings.isConfigured {
+                        Button("Delete Account", role: .destructive) { showDeleteAccount = true }
+                    }
+                } header: {
+                    Text("Danger Zone")
+                } footer: {
+                    Text("Reset erases the devices and sales on this phone. Delete Account also removes your account from the server.")
                 }
             }
             .navigationTitle("Settings")
@@ -75,7 +92,27 @@ struct SettingsView: View {
             } message: {
                 Text("Your devices and sales stay on this phone. The dashboard keeps its last synced copy until another device replaces it.")
             }
+            .confirmationDialog(
+                "Erase everything on this phone?",
+                isPresented: $confirmReset,
+                titleVisibility: .visible
+            ) {
+                Button("Erase Everything", role: .destructive) { resetLocalData() }
+            } message: {
+                Text("Deletes every device, part and sale stored here. Your account and anything already on the dashboard are left alone. This can't be undone.")
+            }
+            .sheet(isPresented: $showDeleteAccount) {
+                DeleteAccountView()
+            }
         }
+    }
+
+    /// Wipes local records. The account and the server copy are untouched —
+    /// this is "start again on this phone", not "delete everything I own".
+    private func resetLocalData() {
+        for device in devices { modelContext.delete(device) }
+        for sale in sales { modelContext.delete(sale) }
+        try? modelContext.save()
     }
 
     // MARK: - Connection

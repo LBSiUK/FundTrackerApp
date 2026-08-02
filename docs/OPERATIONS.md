@@ -49,6 +49,9 @@ docker exec -it fundtracker node scripts/set-password.js <username>
 docker exec -it fundtracker node scripts/users.js list
 docker exec -it fundtracker node scripts/users.js delete <username>
 
+# grant admin (needed for /admin, which is where activation codes come from)
+docker exec -it fundtracker node scripts/set-password.js <email> --admin
+
 # phones allowed to sync
 docker exec -it fundtracker node scripts/devices.js list
 docker exec -it fundtracker node scripts/devices.js revoke <id>
@@ -87,6 +90,8 @@ Everything that matters is in `~/fundtracker/data/`:
 - `users.json` — login hashes (mode 600)
 - `devices.json` — hashed device tokens (mode 600). Lose it and every phone
   needs to sign in again; nothing else breaks.
+- `invites.json` — hashed activation codes (mode 600). Losing it invalidates
+  any unused codes; issue new ones.
 - `photos/` — device photos, named by content hash. Lose them and the next sync
   re-uploads from the phone, since that's still where they originate.
 
@@ -167,7 +172,17 @@ the address is wrong, or the wildcard DNS trap below sent you to InfinityFree.
 
 **Onboarding says "that server has no accounts yet"**
 `/api/health` reported `setupRequired`. Run
-`docker exec -it fundtracker node scripts/set-password.js <username>`.
+`docker exec -it fundtracker node scripts/set-password.js <email> --admin`.
+
+**/admin says "Not an admin"**
+The account signed in is a normal user. Promote it, or sign in as one that
+already has the role. The server logs a warning at startup when no admin exists
+at all, because then nobody can issue codes and nobody can register.
+
+**"That activation code isn't valid"**
+Codes are single use and expire after 14 days. Check the Activation codes table
+in `/admin` — used and expired ones are listed with their status. Generate a
+fresh one; they cost nothing.
 
 **Locked out after too many attempts**
 10 failed logins per IP per 15 minutes. Wait it out, or

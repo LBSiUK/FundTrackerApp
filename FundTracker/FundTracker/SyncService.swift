@@ -93,6 +93,11 @@ enum SyncError: LocalizedError {
     case setupRequired
     case badCredentials
     case tooManyAttempts
+    case codeInvalid
+    case codeUsed
+    case codeExpired
+    case accountExists
+    case weakPassword(Int)
     case server(String)
     case transport(String)
 
@@ -112,6 +117,16 @@ enum SyncError: LocalizedError {
             "Incorrect email or password."
         case .tooManyAttempts:
             "Too many attempts. Try again in 15 minutes."
+        case .codeInvalid:
+            "That activation code isn't valid."
+        case .codeUsed:
+            "That activation code has already been used."
+        case .codeExpired:
+            "That activation code has expired. Ask for a new one."
+        case .accountExists:
+            "There's already an account with that email. Sign in instead."
+        case .weakPassword(let minimum):
+            "Use at least \(minimum) characters."
         case .server(let message):
             message
         case .transport(let message):
@@ -309,12 +324,8 @@ final class SyncService {
 
         let (data, response) = try await send(request)
 
-        if response.statusCode == 401 { throw SyncError.badCredentials }
-        if response.statusCode == 429 { throw SyncError.tooManyAttempts }
-
         guard (200..<300).contains(response.statusCode) else {
-            let detail = (try? JSONDecoder().decode(ServerError.self, from: data))?.message
-            throw SyncError.server(detail ?? "Server returned \(response.statusCode).")
+            throw failure(status: response.statusCode, body: data)
         }
 
         let issued = try JSONDecoder().decode(DeviceResponse.self, from: data)
@@ -324,6 +335,87 @@ final class SyncService {
             deviceName: issued.deviceName,
             username: issued.username
         )
+    }
+
+    /// Turns a non-2xx response into the most specific error available.
+    /// The server names its failures; matching on those beats string-matching
+    /// a message that might be reworded later.
+    private func failure(status: Int, body: Data) -> SyncError {
+        let detail = try? JSONDecoder().decode(ServerError.self, from: body)
+
+        switch detail?.error {
+        case "code_invalid": return .codeInvalid
+        case "code_used": return .codeUsed
+        case "code_expired": return .codeExpired
+        case "exists": return .accountExists
+        case "weak_password": return .weakPassword(12)
+        case "invalid_credentials": return .badCredentials
+        case "too_many_attempts": return .tooManyAttempts
+        default: break
+        }
+
+        if status == 401 { return .badCredentials }
+        if status == 429 { return .tooManyAttempts }
+        return .server(detail?.message ?? "Server returned \(status).")
+    }
+
+    /// Creates an account. Requires a one-time activation code from an admin —
+    /// this server doesn't allow open sign-up.
+    func register(
+        address: String,
+        email: String,
+        password: String,
+        code: String,
+        deviceName: String
+    ) async throws -> DeviceCredential {
+        guard let base = ServerAddress.normalise(address) else { throw SyncError.invalidURL }
+
+        var request = URLRequest(url: base.appendingPathComponent("api/auth/register"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 20
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "email": email.trimmingCharacters(in: .whitespaces).lowercased(),
+            "password": password,
+            "code": code.trimmingCharacters(in: .whitespaces),
+            "deviceName": deviceName,
+        ])
+
+        let (data, response) = try await send(request)
+
+        guard (200..<300).contains(response.statusCode) else {
+            throw failure(status: response.statusCode, body: data)
+        }
+
+        let issued = try JSONDecoder().decode(DeviceResponse.self, from: data)
+        return DeviceCredential(
+            token: issued.token,
+            deviceId: issued.deviceId,
+            deviceName: issued.deviceName,
+            username: issued.username
+        )
+    }
+
+    /// Deletes the account on the server. Password-gated deliberately: the sync
+    /// token on this phone can write records, and that shouldn't be enough to
+    /// destroy the account.
+    func deleteAccount(address: String, email: String, password: String) async throws {
+        guard let base = ServerAddress.normalise(address) else { throw SyncError.invalidURL }
+
+        var request = URLRequest(url: base.appendingPathComponent("api/auth/delete-account"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 20
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "email": email.trimmingCharacters(in: .whitespaces).lowercased(),
+            "password": password,
+        ])
+
+        let (data, response) = try await send(request)
+
+        guard (200..<300).contains(response.statusCode) else {
+            throw failure(status: response.statusCode, body: data)
+        }
     }
 
     // MARK: Transport

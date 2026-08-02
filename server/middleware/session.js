@@ -92,4 +92,32 @@ function requireSession(req, res, next) {
   next();
 }
 
-module.exports = { requireSession, setCookie, clearCookie, currentUser, hasSecret: () => Boolean(SECRET) };
+/**
+ * Admin-only routes. The role is read from users.json on every request rather
+ * than baked into the cookie, so demoting or disabling an admin takes effect
+ * immediately instead of whenever their 30-day session happens to expire.
+ */
+function requireAdmin(req, res, next) {
+  requireSession(req, res, () => {
+    // Required lazily: services/users pulls in this file's siblings, and a
+    // top-level require here would be circular.
+    const users = require('../services/users');
+    const account = users.getUser(req.user);
+
+    if (!account || !account.active || account.role !== 'admin') {
+      return res.status(403).json({ error: 'forbidden', message: 'Admin access required.' });
+    }
+
+    req.account = account;
+    next();
+  });
+}
+
+module.exports = {
+  requireSession,
+  requireAdmin,
+  setCookie,
+  clearCookie,
+  currentUser,
+  hasSecret: () => Boolean(SECRET),
+};

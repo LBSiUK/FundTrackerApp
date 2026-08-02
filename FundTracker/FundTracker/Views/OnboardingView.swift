@@ -14,10 +14,18 @@ struct OnboardingView: View {
         case signIn
     }
 
+    /// Sign in to an existing account, or make one with an activation code.
+    private enum Mode: String, CaseIterable {
+        case signIn = "Sign In"
+        case createAccount = "Create Account"
+    }
+
     @State private var step: Step = .address
+    @State private var mode: Mode = .signIn
     @State private var address = ""
     @State private var email = ""
     @State private var password = ""
+    @State private var activationCode = ""
     @State private var isBusy = false
     @State private var errorMessage: String?
 
@@ -120,14 +128,30 @@ struct OnboardingView: View {
                     .font(.largeTitle)
                     .foregroundStyle(.tint)
 
-                Text("Sign in")
+                Text(mode == .signIn ? "Sign in" : "Create an account")
                     .font(.title2.bold())
 
                 Text("Your password goes to **\(confirmedHost)** and isn't kept on this phone. It's exchanged for a sync token that can upload records but can't read them back.")
                     .foregroundStyle(.secondary)
             }
 
+            Picker("Mode", selection: $mode) {
+                ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .disabled(isBusy)
+            .onChange(of: mode) { errorMessage = nil }
+
             VStack(spacing: 12) {
+                if mode == .createAccount {
+                    TextField("Activation code", text: $activationCode)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .font(.body.monospaced())
+                        .disabled(isBusy)
+                }
+
                 TextField("Email", text: $email)
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
@@ -140,10 +164,16 @@ struct OnboardingView: View {
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .textContentType(.password)
+                    .textContentType(mode == .signIn ? .password : .newPassword)
                     .submitLabel(.go)
                     .disabled(isBusy)
                     .onSubmit { Task { await submitSignIn() } }
+            }
+
+            if mode == .createAccount {
+                Text("Accounts need a one-time activation code from whoever runs the server.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if let errorMessage {
@@ -158,15 +188,25 @@ struct OnboardingView: View {
                 HStack {
                     Spacer()
                     if isBusy { ProgressView().padding(.trailing, 4) }
-                    Text(isBusy ? "Signing in…" : "Sign In")
+                    Text(busyLabel)
                     Spacer()
                 }
             }
             .buttonStyle(.glassProminent)
-            .disabled(email.isEmpty || password.isEmpty || isBusy)
+            .disabled(!canSubmit || isBusy)
 
             Spacer()
         }
+    }
+
+    private var canSubmit: Bool {
+        guard !email.isEmpty, !password.isEmpty else { return false }
+        return mode == .signIn || !activationCode.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var busyLabel: String {
+        if isBusy { return mode == .signIn ? "Signing in…" : "Creating…" }
+        return mode.rawValue
     }
 
     // MARK: - Actions
@@ -208,14 +248,27 @@ struct OnboardingView: View {
         defer { isBusy = false }
 
         do {
-            let credential = try await sync.signIn(
-                address: address,
-                email: email,
-                password: password,
-                deviceName: UIDevice.current.name
-            )
-            // Clear the password from memory as soon as it has done its job.
+            let credential: DeviceCredential
+            switch mode {
+            case .signIn:
+                credential = try await sync.signIn(
+                    address: address,
+                    email: email,
+                    password: password,
+                    deviceName: UIDevice.current.name
+                )
+            case .createAccount:
+                credential = try await sync.register(
+                    address: address,
+                    email: email,
+                    password: password,
+                    code: activationCode,
+                    deviceName: UIDevice.current.name
+                )
+            }
+            // Clear the secrets from memory as soon as they've done their job.
             password = ""
+            activationCode = ""
             settings.apply(credential, serverURL: address)
             finish()
         } catch {

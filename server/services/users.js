@@ -70,10 +70,69 @@ function writeUsers(users) {
   fs.renameSync(tmp, USERS_PATH);
 }
 
-function setUser(username, password) {
+/**
+ * Records gained `role`, `active` and `createdAt` when the admin interface
+ * arrived. Accounts written before that are plain `{ password }`, so every read
+ * goes through here rather than assuming the newer shape.
+ */
+function normalise(username, record) {
+  if (!record) return null;
+  return {
+    username,
+    password: record.password,
+    role: record.role === 'admin' ? 'admin' : 'user',
+    // Absent means an account from before the flag existed, which was usable.
+    active: record.active !== false,
+    createdAt: record.createdAt || null,
+  };
+}
+
+function getUser(username) {
+  const key = String(username || '').toLowerCase();
+  return normalise(key, readUsers()[key]);
+}
+
+function setUser(username, password, options = {}) {
   const users = readUsers();
-  users[username.toLowerCase()] = { password: hashPassword(password) };
+  const key = username.toLowerCase();
+  const existing = users[key];
+
+  users[key] = {
+    password: hashPassword(password),
+    role: options.role || (existing && existing.role) || 'user',
+    active: options.active !== undefined ? options.active : (existing ? existing.active !== false : true),
+    createdAt: (existing && existing.createdAt) || new Date().toISOString(),
+  };
   writeUsers(users);
+  return normalise(key, users[key]);
+}
+
+/** Changes a password without touching role or active state. */
+function setPassword(username, password) {
+  const users = readUsers();
+  const key = String(username || '').toLowerCase();
+  if (!users[key]) return false;
+  users[key].password = hashPassword(password);
+  writeUsers(users);
+  return true;
+}
+
+function setRole(username, role) {
+  const users = readUsers();
+  const key = String(username || '').toLowerCase();
+  if (!users[key]) return false;
+  users[key].role = role === 'admin' ? 'admin' : 'user';
+  writeUsers(users);
+  return true;
+}
+
+function setActive(username, active) {
+  const users = readUsers();
+  const key = String(username || '').toLowerCase();
+  if (!users[key]) return false;
+  users[key].active = Boolean(active);
+  writeUsers(users);
+  return true;
 }
 
 function deleteUser(username) {
@@ -85,8 +144,19 @@ function deleteUser(username) {
   return true;
 }
 
+/** Every account, without password hashes — safe for the admin interface. */
 function listUsers() {
-  return Object.keys(readUsers()).sort();
+  const users = readUsers();
+  return Object.keys(users)
+    .sort()
+    .map((key) => {
+      const { password, ...rest } = normalise(key, users[key]);
+      return rest;
+    });
+}
+
+function countAdmins() {
+  return listUsers().filter((user) => user.role === 'admin' && user.active).length;
 }
 
 /**
@@ -95,12 +165,16 @@ function listUsers() {
  */
 const DUMMY_HASH = hashPassword(crypto.randomBytes(32).toString('hex'));
 
+/** Returns the account on success, or null. Disabled accounts never succeed. */
 function authenticate(username, password) {
-  const users = readUsers();
-  const record = users[String(username || '').toLowerCase()];
+  const key = String(username || '').toLowerCase();
+  const record = readUsers()[key];
   const stored = record ? record.password : DUMMY_HASH;
   const ok = verifyPassword(String(password || ''), stored);
-  return ok && Boolean(record);
+  if (!ok || !record) return null;
+
+  const user = normalise(key, record);
+  return user.active ? user : null;
 }
 
 function hasAnyUser() {
@@ -109,9 +183,14 @@ function hasAnyUser() {
 
 module.exports = {
   authenticate,
+  getUser,
   setUser,
+  setPassword,
+  setRole,
+  setActive,
   deleteUser,
   listUsers,
+  countAdmins,
   hasAnyUser,
   hashPassword,
   verifyPassword,

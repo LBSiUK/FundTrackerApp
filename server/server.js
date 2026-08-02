@@ -1,10 +1,12 @@
 'use strict';
 
 const express      = require('express');
+const path         = require('path');
 const fundRouter    = require('./routes/fund');
 const authRouter    = require('./routes/auth');
 const devicesRouter = require('./routes/devices');
 const photosRouter  = require('./routes/photos');
+const adminRouter   = require('./routes/admin');
 const users        = require('./services/users');
 const session      = require('./middleware/session');
 const errorHandler = require('./middleware/errorHandler');
@@ -33,6 +35,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// /admin is a page, not a directory. The API behind it is what's guarded —
+// serving the shell to anyone costs nothing and keeps the routing obvious.
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 app.use(express.static('public'));
 
 // Unauthenticated, so the dashboard can tell "server down" from "signed out",
@@ -53,6 +61,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/devices', devicesRouter);
 app.use('/api/photos', photosRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api', fundRouter);
 
 app.use(errorHandler);
@@ -63,8 +72,11 @@ app.listen(PORT, () => {
     console.warn('WARNING: SESSION_SECRET is not set — nobody will be able to sign in.');
   }
   if (!users.hasAnyUser()) {
-    console.warn('WARNING: no logins yet — run `node scripts/set-password.js <email>`.');
-    console.warn('         Until then the iOS app has nothing to sign in against.');
+    console.warn('WARNING: no logins yet — run `node scripts/set-password.js <email> --admin`.');
+    console.warn('         Until then nobody can sign in and no codes can be issued.');
+  } else if (users.countAdmins() === 0) {
+    console.warn('WARNING: no admin account — /admin is unreachable and no activation');
+    console.warn('         codes can be issued. Run `node scripts/set-password.js <email> --admin`.');
   }
   if (process.env.FUNDTRACKER_TOKEN) {
     console.warn('NOTE: FUNDTRACKER_TOKEN is set. That shared token still works, but the');

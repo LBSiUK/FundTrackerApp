@@ -50,6 +50,9 @@ it from `.env` once every device has signed in.
 | DELETE | `/api/devices/:id`  | Session | Revoke one                       |
 | POST   | `/api/photos/:hash` | Bearer  | Upload a device photo (raw JPEG body) |
 | GET    | `/api/photos/:hash` | Session | Serve it                         |
+| POST   | `/api/auth/register` | none   | Create an account — requires an activation code |
+| POST   | `/api/auth/delete-account` | none | Delete your own account (password required) |
+| *      | `/api/admin/*`      | Admin   | Accounts, devices and activation codes |
 
 `/api/health` returns `{"service":"fundtracker"}`. The app checks that field
 rather than just the status code — a 200 from an unrelated host is not proof you
@@ -80,10 +83,43 @@ npm start                      # http://localhost:3100
 
 No `FUNDTRACKER_TOKEN` needed: the app gets its own token by signing in.
 
+## Accounts, roles and activation codes
+
+Accounts have a role (`user` or `admin`) and an active flag. Records written
+before roles existed are plain `{ password }` and read as active users, so
+nothing had to be migrated.
+
+**Registration is closed.** `POST /api/auth/register` creates nothing without a
+one-time activation code, which only an admin can issue. That's what keeps a
+publicly reachable server from being an open sign-up.
+
+Codes read as `ABCD-EFGH-JKMN` — 12 symbols from an alphabet with I, L, O and U
+removed so nothing is ambiguous when typed off a screen. 60 bits of entropy,
+single use, expiring after 14 days by default. Only the SHA-256 is stored; the
+plaintext exists once, in the response that created it.
+
+### The admin interface
+
+`/admin` — accounts, devices and codes. It needs an account with the admin role:
+
+```sh
+node scripts/set-password.js you@example.com --admin
+```
+
+Three invariants are enforced in `routes/admin.js` rather than in the page,
+because the page isn't the only possible caller:
+
+- the last active admin can't be deleted, demoted or deactivated — losing every
+  admin means nobody can make one again without shell access
+- you can't demote or deactivate yourself
+- disabling an account or changing its password revokes its device tokens, so a
+  phone that already holds one stops syncing
+
 ## Managing accounts and devices
 
 ```sh
-node scripts/set-password.js you@example.com   # create or change a password
+node scripts/set-password.js you@example.com          # create or change a password
+node scripts/set-password.js you@example.com --admin # ...and grant admin
 node scripts/users.js list
 node scripts/users.js delete you@example.com   # also revokes that account's devices
 

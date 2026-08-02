@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>FundTracker admin</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="login" class="gate" hidden>
+    <form id="login-form" class="gate-card">
+      <h1>Admin</h1>
+      <p class="muted">Sign in with an admin account.</p>
+      <label class="field">
+        <span>Email</span>
+        <input id="username-input" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input id="password-input" type="password" autocomplete="current-password" required>
+      </label>
+      <button id="login-button" type="submit">Sign in</button>
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </form>
+  </div>
+
+  <div id="forbidden" class="gate" hidden>
+    <div class="gate-card">
+      <h1>Not an admin</h1>
+      <p class="muted">This account can see the dashboard but can't manage the server.</p>
+      <p><a href="/">Back to the dashboard</a></p>
+      <button id="forbidden-signout" class="ghost">Sign out</button>
+    </div>
+  </div>
+
+  <main id="admin" hidden>
+    <header class="page-head">
+      <div>
+        <h1>Admin</h1>
+        <p id="signed-in-as" class="muted"></p>
+      </div>
+      <div class="head-actions">
+        <a class="ghost" href="/">Dashboard</a>
+        <button id="sign-out" class="ghost">Sign out</button>
+      </div>
+    </header>
+
+    <p id="admin-error" class="error" role="alert" hidden></p>
+
+    <!-- A freshly generated code appears here once and is never recoverable. -->
+    <section id="new-code-card" class="card highlight" hidden>
+      <h2>New activation code</h2>
+      <p class="muted">Copy it now — it isn't stored in a form you can read again.</p>
+      <p id="new-code" class="code-display"></p>
+      <button id="copy-code" class="ghost">Copy</button>
+    </section>
+
+    <section class="card">
+      <div class="row-between">
+        <h2>Activation codes</h2>
+        <button id="new-code-button">Generate code</button>
+      </div>
+      <p class="muted">One use each. Someone needs one of these to create an account.</p>
+      <div class="table-scroll">
+        <table id="invites-table">
+          <thead>
+            <tr>
+              <th scope="col">Status</th>
+              <th scope="col">Note</th>
+              <th scope="col">Created</th>
+              <th scope="col">Expires</th>
+              <th scope="col">Used by</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="invites-empty" class="muted" hidden>No codes yet.</p>
+      <button id="purge-invites" class="ghost">Clear used and expired</button>
+    </section>
+
+    <section class="card">
+      <div class="row-between">
+        <h2>Accounts</h2>
+        <button id="new-account-button">Create account</button>
+      </div>
+      <div class="table-scroll">
+        <table id="accounts-table">
+          <thead>
+            <tr>
+              <th scope="col">Email</th>
+              <th scope="col">Role</th>
+              <th scope="col">State</th>
+              <th scope="col" class="num">Devices</th>
+              <th scope="col">Created</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Devices</h2>
+      <p class="muted">Phones holding a sync token. Revoking one signs that phone out.</p>
+      <div class="table-scroll">
+        <table id="devices-table">
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Account</th>
+              <th scope="col">Added</th>
+              <th scope="col">Last synced</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="devices-empty" class="muted" hidden>No devices have signed in yet.</p>
+    </section>
+  </main>
+
+  <dialog id="account-dialog">
+    <form id="account-form" method="dialog">
+      <h2 id="account-dialog-title">Create account</h2>
+      <label class="field">
+        <span>Email</span>
+        <input id="account-email" type="text" inputmode="email" autocapitalize="none" spellcheck="false" required>
+      </label>
+      <label class="field">
+        <span id="account-password-label">Password</span>
+        <input id="account-password" type="password" autocomplete="new-password" minlength="12" required>
+      </label>
+      <label class="check">
+        <input id="account-admin" type="checkbox">
+        <span>Admin</span>
+      </label>
+      <p id="account-error" class="error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="account-cancel" class="ghost">Cancel</button>
+        <button type="button" id="account-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="admin.js"></script>
+</body>
+</html>
