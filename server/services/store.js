@@ -1,34 +1,43 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+// Synced snapshots, one per account.
+//
+// This used to be a single snapshot.json for the whole server, which was fine
+// while there was exactly one user and silently wrong the moment there were
+// two — the second phone's sync would replace the first's records. Keyed by
+// account id, a full replace only ever replaces your own.
 
-const DATA_DIR = process.env.FUNDTRACKER_DATA_DIR || path.join(__dirname, '..', 'data');
-const SNAPSHOT_PATH = path.join(DATA_DIR, 'snapshot.json');
+const { db } = require('./db');
 
 const EMPTY = { syncedAt: null, devices: [], sales: [] };
 
-function ensureDir() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+function read(accountId) {
+  const row = db.prepare('SELECT synced_at, payload FROM snapshots WHERE account_id = ?').get(accountId);
+  if (!row) return { ...EMPTY };
 
-function read() {
   try {
-    return JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'));
-  } catch (err) {
-    if (err.code === 'ENOENT') return { ...EMPTY };
-    throw err;
+    const payload = JSON.parse(row.payload);
+    return { syncedAt: row.synced_at, devices: payload.devices || [], sales: payload.sales || [] };
+  } catch {
+    // A corrupt payload shouldn't take the dashboard down with it.
+    return { ...EMPTY };
   }
 }
 
-// Write to a temp file then rename, so a crash mid-write can't leave a
-// half-written snapshot behind — rename is atomic on the same filesystem.
-function write(snapshot) {
-  ensureDir();
-  const tmp = `${SNAPSHOT_PATH}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2));
-  fs.renameSync(tmp, SNAPSHOT_PATH);
-  return snapshot;
+function write(accountId, { devices, sales }) {
+  const syncedAt = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO snapshots (account_id, synced_at, payload)
+    VALUES (?, ?, ?)
+    ON CONFLICT(account_id) DO UPDATE SET synced_at = excluded.synced_at, payload = excluded.payload
+  `).run(accountId, syncedAt, JSON.stringify({ devices, sales }));
+
+  return { syncedAt, devices, sales };
 }
 
-module.exports = { read, write, DATA_DIR, SNAPSHOT_PATH };
+function clear(accountId) {
+  return db.prepare('DELETE FROM snapshots WHERE account_id = ?').run(accountId).changes > 0;
+}
+
+module.exports = { read, write, clear };

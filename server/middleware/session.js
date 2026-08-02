@@ -1,5 +1,12 @@
 'use strict';
 
+// Signed session cookies.
+//
+// The cookie carries an **account id**, not a username. That's what lets an
+// admin rename an account without signing it out, and it means the role and
+// active flag are read fresh from the database on every request rather than
+// being frozen at sign-in.
+
 const crypto = require('crypto');
 
 const COOKIE_NAME = 'ft_session';
@@ -17,9 +24,9 @@ function sign(payload) {
   return crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
 }
 
-/** Stateless signed cookie: no server-side store, so sessions survive restarts. */
-function issue(username) {
-  const payload = b64url(JSON.stringify({ u: username, exp: Date.now() + MAX_AGE_MS }));
+/** Stateless signed cookie: no server-side store, so sessions survive a restart. */
+function issue(accountId) {
+  const payload = b64url(JSON.stringify({ a: accountId, exp: Date.now() + MAX_AGE_MS }));
   return `${payload}.${sign(payload)}`;
 }
 
@@ -51,11 +58,11 @@ function parseCookies(header) {
   return out;
 }
 
-// Secure is set whenever the request arrived over TLS. Behind the tunnel or a
-// reverse proxy that's X-Forwarded-Proto, which `trust proxy` resolves for us.
-function setCookie(req, res, username) {
+// Secure is set whenever the request arrived over TLS. Behind Caddy that's
+// X-Forwarded-Proto, which `trust proxy` resolves for us.
+function setCookie(req, res, accountId) {
   const attributes = [
-    `${COOKIE_NAME}=${issue(username)}`,
+    `${COOKIE_NAME}=${issue(accountId)}`,
     'HttpOnly',
     'SameSite=Lax',
     'Path=/',
@@ -69,10 +76,16 @@ function clearCookie(res) {
   res.setHeader('Set-Cookie', `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
 }
 
-function currentUser(req) {
+/** The account this request belongs to, straight from the database, or null. */
+function currentAccount(req) {
+  // Required lazily to keep the module graph acyclic.
+  const accounts = require('../services/accounts');
   const cookies = parseCookies(req.headers.cookie);
   const session = verify(cookies[COOKIE_NAME]);
-  return session ? session.u : null;
+  if (!session || !session.a) return null;
+
+  const account = accounts.byId(session.a);
+  return account && account.active ? account : null;
 }
 
 function requireSession(req, res, next) {
@@ -83,41 +96,57 @@ function requireSession(req, res, next) {
     });
   }
 
-  const user = currentUser(req);
-  if (!user) {
+  const account = currentAccount(req);
+  if (!account) {
     return res.status(401).json({ error: 'unauthorized', message: 'Please sign in.' });
   }
 
-  req.user = user;
+  // An account carrying a default or reset password can reach the
+  // change-password endpoint and nothing else. Enforced here so no individual
+  // route has to remember to check.
+  if (account.mustChangePassword && !req.path.startsWith('/change-password')) {
+    return res.status(428).json({
+      error: 'password_change_required',
+      message: 'Set a new password before continuing.',
+    });
+  }
+
+  req.account = account;
   next();
 }
 
 /**
- * Admin-only routes. The role is read from users.json on every request rather
- * than baked into the cookie, so demoting or disabling an admin takes effect
- * immediately instead of whenever their 30-day session happens to expire.
+ * Fund data, and nothing else. Admins are deliberately excluded: the admin
+ * account manages the server rather than using it, and has no records of its
+ * own to look at.
  */
+function requireUser(req, res, next) {
+  requireSession(req, res, () => {
+    if (req.account.role === 'admin') {
+      return res.status(403).json({
+        error: 'admin_has_no_fund',
+        message: 'The admin account manages accounts, not fund data. Sign in as a user.',
+      });
+    }
+    next();
+  });
+}
+
 function requireAdmin(req, res, next) {
   requireSession(req, res, () => {
-    // Required lazily: services/users pulls in this file's siblings, and a
-    // top-level require here would be circular.
-    const users = require('../services/users');
-    const account = users.getUser(req.user);
-
-    if (!account || !account.active || account.role !== 'admin') {
+    if (req.account.role !== 'admin') {
       return res.status(403).json({ error: 'forbidden', message: 'Admin access required.' });
     }
-
-    req.account = account;
     next();
   });
 }
 
 module.exports = {
   requireSession,
+  requireUser,
   requireAdmin,
   setCookie,
   clearCookie,
-  currentUser,
+  currentAccount,
   hasSecret: () => Boolean(SECRET),
 };

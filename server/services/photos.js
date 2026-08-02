@@ -1,25 +1,20 @@
 'use strict';
 
-// Device photos, stored by content hash.
+// Device photos: content-addressed bytes on disk, ownership in the database.
 //
-// A photo is written to `data/photos/<sha256>.jpg`, and the snapshot refers to
-// it by that hash. Content-addressing buys three things cheaply:
+// The file for a given SHA-256 is stored once at `photos/<hash>.jpg` no matter
+// how many accounts reference it, and the `photos` table records who may see
+// it. That split matters with many users: dedupe is global, access is not.
+// Reading a photo you don't own is a 404 even if the bytes are sitting there.
 //
-//   - **Idempotence.** Re-uploading the same photo is a no-op, so a repeated
-//     sync costs nothing and an interrupted one can simply be retried.
-//   - **Dedupe.** The same photo on two devices is stored once.
-//   - **Safe paths.** The filename is derived from the content, never from
-//     anything a caller chose, and is checked against a strict hex pattern
-//     before it ever reaches the filesystem.
-//
-// The phone only uploads hashes the server says it is missing, so photos cross
-// the network once rather than on every sync.
+// Pruning therefore has two levels — drop this account's row, then delete the
+// file only once no account references it at all.
 
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { db, DATA_DIR } = require('./db');
 
-const DATA_DIR = process.env.FUNDTRACKER_DATA_DIR || path.join(__dirname, '..', 'data');
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 
 // The app downscales to 1280px at quality 0.8 before sending, which lands well
@@ -42,119 +37,89 @@ function pathFor(hash) {
   return path.join(PHOTOS_DIR, `${hash}.jpg`);
 }
 
-function has(hash) {
+/** Does this account have a row for this photo? Ownership, not existence. */
+function has(accountId, hash) {
   if (!isValidHash(hash)) return false;
-  return fs.existsSync(pathFor(hash));
+  const row = db.prepare('SELECT 1 AS ok FROM photos WHERE account_id = ? AND hash = ?').get(accountId, hash);
+  return Boolean(row) && fs.existsSync(pathFor(hash));
 }
 
-/**
- * Stores a photo under its own hash.
- * Throws with a `code` when the bytes aren't what was claimed.
- */
-function save(hash, buffer) {
-  if (!isValidHash(hash)) {
-    const err = new Error('Photo id must be a SHA-256 hex digest.');
-    err.code = 'invalid_hash';
+function save(accountId, hash, buffer) {
+  const fail = (code, message) => {
+    const err = new Error(message);
+    err.code = code;
     throw err;
-  }
+  };
 
-  if (!buffer || buffer.length === 0) {
-    const err = new Error('Empty body.');
-    err.code = 'empty';
-    throw err;
-  }
-
-  if (buffer.length > MAX_BYTES) {
-    const err = new Error(`Photo is larger than ${Math.round(MAX_BYTES / 1024 / 1024)}MB.`);
-    err.code = 'too_large';
-    throw err;
-  }
-
-  if (!looksLikeJpeg(buffer)) {
-    const err = new Error('Body is not a JPEG.');
-    err.code = 'not_jpeg';
-    throw err;
-  }
+  if (!isValidHash(hash)) fail('invalid_hash', 'Photo id must be a SHA-256 hex digest.');
+  if (!buffer || buffer.length === 0) fail('empty', 'Empty body.');
+  if (buffer.length > MAX_BYTES) fail('too_large', `Photo is larger than ${Math.round(MAX_BYTES / 1024 / 1024)}MB.`);
+  if (!looksLikeJpeg(buffer)) fail('not_jpeg', 'Body is not a JPEG.');
 
   // The whole scheme rests on the name matching the content; verify rather
   // than trust the uploader.
   const actual = crypto.createHash('sha256').update(buffer).digest('hex');
-  if (actual !== hash) {
-    const err = new Error('Body does not match the given hash.');
-    err.code = 'hash_mismatch';
-    throw err;
-  }
+  if (actual !== hash) fail('hash_mismatch', 'Body does not match the given hash.');
 
   fs.mkdirSync(PHOTOS_DIR, { recursive: true });
   const target = pathFor(hash);
-  const tmp = `${target}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, buffer, { mode: 0o600 });
-  fs.renameSync(tmp, target);
+
+  // Another account may already have uploaded these exact bytes.
+  if (!fs.existsSync(target)) {
+    const tmp = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, buffer, { mode: 0o600 });
+    fs.renameSync(tmp, target);
+  }
+
+  db.prepare(`
+    INSERT INTO photos (account_id, hash, bytes, created_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(account_id, hash) DO NOTHING
+  `).run(accountId, hash, buffer.length, new Date().toISOString());
 
   return { hash, bytes: buffer.length };
 }
 
-/** Of the hashes given, the ones not stored yet. */
-function missing(hashes) {
-  const wanted = Array.isArray(hashes) ? hashes : [];
-  return [...new Set(wanted.filter(isValidHash))].filter((hash) => !has(hash));
+/** Of the hashes given, the ones this account doesn't already own. */
+function missing(accountId, hashes) {
+  const wanted = [...new Set((Array.isArray(hashes) ? hashes : []).filter(isValidHash))];
+  return wanted.filter((hash) => !has(accountId, hash));
 }
 
 /**
- * Deletes stored photos no longer referenced by the snapshot.
- * The phone is the source of truth: removing a photo there should not leave a
- * copy on the server forever.
+ * Drops this account's claim on anything the snapshot no longer references,
+ * then deletes files nobody references any more.
  */
-function prune(keepHashes) {
+function prune(accountId, keepHashes) {
   const keep = new Set((keepHashes || []).filter(isValidHash));
 
-  let entries;
-  try {
-    entries = fs.readdirSync(PHOTOS_DIR);
-  } catch (err) {
-    if (err.code === 'ENOENT') return 0;
-    throw err;
-  }
+  const owned = db.prepare('SELECT hash FROM photos WHERE account_id = ?').all(accountId);
+  const orphaned = owned.map((row) => row.hash).filter((hash) => !keep.has(hash));
+  if (orphaned.length === 0) return 0;
 
-  let removed = 0;
-  for (const entry of entries) {
-    const hash = entry.replace(/\.jpg$/, '');
-    // Skip anything that isn't a finished photo — .tmp files from an
-    // in-flight write, most obviously.
-    if (!isValidHash(hash) || !entry.endsWith('.jpg')) continue;
-    if (keep.has(hash)) continue;
+  const dropRow = db.prepare('DELETE FROM photos WHERE account_id = ? AND hash = ?');
+  const stillWanted = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE hash = ?');
 
-    try {
-      fs.unlinkSync(path.join(PHOTOS_DIR, entry));
-      removed += 1;
-    } catch {
-      // A photo that can't be deleted isn't worth failing a sync over.
+  for (const hash of orphaned) {
+    dropRow.run(accountId, hash);
+
+    // Only now is it safe to remove the bytes — another account may share them.
+    if (stillWanted.get(hash).n === 0) {
+      try {
+        fs.unlinkSync(pathFor(hash));
+      } catch {
+        // Already gone, or unreadable; not worth failing a sync over.
+      }
     }
   }
 
-  return removed;
+  return orphaned.length;
 }
 
-function stats() {
-  let entries;
-  try {
-    entries = fs.readdirSync(PHOTOS_DIR);
-  } catch {
-    return { count: 0, bytes: 0 };
-  }
-
-  let bytes = 0;
-  let count = 0;
-  for (const entry of entries) {
-    if (!entry.endsWith('.jpg')) continue;
-    try {
-      bytes += fs.statSync(path.join(PHOTOS_DIR, entry)).size;
-      count += 1;
-    } catch {
-      // Raced with a prune; ignore.
-    }
-  }
-  return { count, bytes };
+function statsForAccount(accountId) {
+  const row = db.prepare('SELECT COUNT(*) AS count, COALESCE(SUM(bytes), 0) AS bytes FROM photos WHERE account_id = ?')
+    .get(accountId);
+  return { count: row.count, bytes: row.bytes };
 }
 
-module.exports = { has, save, missing, prune, pathFor, stats, isValidHash, MAX_BYTES, PHOTOS_DIR };
+module.exports = { has, save, missing, prune, pathFor, statsForAccount, isValidHash, MAX_BYTES, PHOTOS_DIR };

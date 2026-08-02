@@ -1,129 +1,115 @@
 'use strict';
 
-// Per-device sync tokens.
+// Per-device sync tokens, owned by an account id.
 //
-// A device token is what the iOS app actually stores after you sign in. The
-// password is exchanged for one of these once, during onboarding, and is never
-// kept on the phone. Each device gets its own, so losing a phone means revoking
-// one token rather than rotating a shared secret for everything you own.
+// A device token is what the iOS app stores after signing in. The password is
+// exchanged for one of these once and never kept on the phone. One account can
+// have many devices; revoking one leaves the others alone.
 //
-// These are hashed with plain SHA-256 rather than scrypt. That's deliberate and
-// not an oversight: a token is 32 bytes of CSPRNG output, so there is no
-// dictionary to attack and no work factor worth paying. Passwords need scrypt
-// because humans choose them; tokens don't.
+// Tokens are hashed with plain SHA-256 rather than scrypt. That's deliberate:
+// a token is 32 bytes of CSPRNG output, so there's no dictionary to attack and
+// no work factor worth paying. Passwords need scrypt because humans choose them.
 
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-
-const DATA_DIR = process.env.FUNDTRACKER_DATA_DIR || path.join(__dirname, '..', 'data');
-const DEVICES_PATH = path.join(DATA_DIR, 'devices.json');
+const { db } = require('./db');
 
 const TOKEN_BYTES = 32;
 
 function hashToken(token) {
-  return crypto.createHash('sha256').update(String(token)).digest();
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
-function read() {
-  try {
-    return JSON.parse(fs.readFileSync(DEVICES_PATH, 'utf8'));
-  } catch (err) {
-    if (err.code === 'ENOENT') return {};
-    throw err;
-  }
+function present(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    username: row.username,
+    name: row.name,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+  };
 }
 
-function write(devices) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const tmp = `${DEVICES_PATH}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(devices, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, DEVICES_PATH);
-}
-
-/**
- * Mints a token for a device and stores only its hash.
- * The raw token is returned once and cannot be recovered afterwards.
- */
-function issue(username, deviceName) {
+/** Mints a token and stores only its hash. The raw value is returned once. */
+function issue(accountId, deviceName) {
   const token = crypto.randomBytes(TOKEN_BYTES).toString('base64url');
   const id = crypto.randomUUID();
+  const name = String(deviceName || 'iPhone').slice(0, 60);
 
-  const devices = read();
-  devices[id] = {
-    id,
-    name: String(deviceName || 'iPhone').slice(0, 60),
-    user: String(username).toLowerCase(),
-    tokenHash: hashToken(token).toString('base64'),
-    createdAt: new Date().toISOString(),
-    lastSeenAt: null,
-  };
-  write(devices);
+  db.prepare(`
+    INSERT INTO devices (id, account_id, name, token_hash, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, accountId, name, hashToken(token), new Date().toISOString());
 
-  return { token, id, name: devices[id].name };
+  return { token, id, name };
 }
 
 /**
- * Returns the device record for a raw token, or null.
- * Compares in constant time so a near-miss token can't be refined by timing.
+ * Resolves a raw token to its device and account.
+ * Looks up by hash rather than scanning, so this stays constant-work as the
+ * number of devices grows — the hash of a wrong token simply matches no row.
  */
 function verify(token) {
   if (!token) return null;
 
-  const supplied = hashToken(token);
-  const devices = read();
+  const row = db.prepare(`
+    SELECT d.*, a.username, a.active AS account_active, a.role AS account_role
+    FROM devices d
+    JOIN accounts a ON a.id = d.account_id
+    WHERE d.token_hash = ?
+  `).get(hashToken(token));
 
-  for (const record of Object.values(devices)) {
-    const stored = Buffer.from(record.tokenHash, 'base64');
-    if (stored.length === supplied.length && crypto.timingSafeEqual(stored, supplied)) {
-      return record;
-    }
-  }
-
-  return null;
+  if (!row || row.account_active !== 1) return null;
+  return present(row);
 }
 
-/** Records that a device just synced. Best-effort: never fails the request. */
+/** Best-effort last-seen stamp; never fails a sync. */
 function touch(id) {
   try {
-    const devices = read();
-    if (!devices[id]) return;
-    devices[id].lastSeenAt = new Date().toISOString();
-    write(devices);
+    db.prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?').run(new Date().toISOString(), id);
   } catch {
-    // A failed timestamp update isn't worth rejecting a sync over.
+    // A timestamp isn't worth rejecting a sync over.
   }
 }
 
-/** Everything except the hashes — safe to hand to the dashboard. */
-function list() {
-  return Object.values(read())
-    .map(({ tokenHash, ...rest }) => rest)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+function listForAccount(accountId) {
+  return db.prepare(`
+    SELECT d.*, a.username FROM devices d
+    JOIN accounts a ON a.id = d.account_id
+    WHERE d.account_id = ?
+    ORDER BY d.created_at DESC
+  `).all(accountId).map(present);
+}
+
+function byId(id) {
+  return present(db.prepare(`
+    SELECT d.*, a.username FROM devices d
+    JOIN accounts a ON a.id = d.account_id
+    WHERE d.id = ?
+  `).get(id));
 }
 
 function revoke(id) {
-  const devices = read();
-  if (!devices[id]) return false;
-  delete devices[id];
-  write(devices);
-  return true;
+  return db.prepare('DELETE FROM devices WHERE id = ?').run(id).changes > 0;
 }
 
-function revokeAllForUser(username) {
-  const devices = read();
-  const target = String(username).toLowerCase();
-  let removed = 0;
-
-  for (const [id, record] of Object.entries(devices)) {
-    if (record.user === target) {
-      delete devices[id];
-      removed += 1;
-    }
-  }
-
-  if (removed) write(devices);
-  return removed;
+function revokeAllForAccount(accountId) {
+  return db.prepare('DELETE FROM devices WHERE account_id = ?').run(accountId).changes;
 }
 
-module.exports = { issue, verify, touch, list, revoke, revokeAllForUser, DEVICES_PATH };
+function countForAccount(accountId) {
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM devices WHERE account_id = ?').get(accountId);
+  return n;
+}
+
+module.exports = {
+  issue,
+  verify,
+  touch,
+  listForAccount,
+  byId,
+  revoke,
+  revokeAllForAccount,
+  countForAccount,
+};

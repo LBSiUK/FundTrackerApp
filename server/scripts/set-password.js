@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 
-// Creates or updates a dashboard login.
+// Creates or updates an account from the server.
 //   node scripts/set-password.js you@example.com
 //   node scripts/set-password.js you@example.com --admin
 //
-// --admin grants access to /admin, which is where activation codes are issued.
-// The first account on a server needs it: without an admin nobody can create
-// codes, and without a code nobody can register.
+// Day-to-day account management lives at /admin. This exists for the case the
+// web interface can't help with: no admin can sign in.
 //
-// The password is read from stdin without echoing, so it never appears in
-// shell history or the process list.
+// The password is read from stdin without echoing, so it never reaches shell
+// history or the process list.
 
 const readline = require('readline');
-const users = require('../services/users');
+const accounts = require('../services/accounts');
 
 const args = process.argv.slice(2);
 const asAdmin = args.includes('--admin');
@@ -28,12 +27,10 @@ function prompt(question) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
 
-    // Suppress echo while the password is typed.
     let muted = false;
     const write = rl._writeToOutput.bind(rl);
     rl._writeToOutput = (chunk) => {
       if (!muted) return write(chunk);
-      // Keep the prompt itself visible, hide the typed characters.
       if (chunk.includes(question)) return write(chunk);
       return undefined;
     };
@@ -56,16 +53,18 @@ function prompt(question) {
     process.exit(1);
   }
 
-  if (password.length < 12) {
-    console.error('Use at least 12 characters — this login will be reachable from the internet.');
+  if (password.length < accounts.MIN_PASSWORD) {
+    console.error(`Use at least ${accounts.MIN_PASSWORD} characters — this login is reachable from the internet.`);
     process.exit(1);
   }
 
-  users.setUser(username, password, asAdmin ? { role: 'admin', active: true } : {});
-  const account = users.getUser(username);
-  console.log(`Password set for "${account.username}" (${account.role}).`);
-  console.log(`Stored in ${users.USERS_PATH}`);
-  if (account.role === 'admin') {
-    console.log('Admin interface: https://<your-domain>/admin');
-  }
+  const existing = accounts.byUsername(username);
+  const account = existing
+    ? accounts.setPassword(existing.id, password, { mustChange: false })
+    : accounts.create({ username, password, role: asAdmin ? 'admin' : 'user', active: true });
+
+  if (existing && asAdmin && existing.role !== 'admin') accounts.setRole(existing.id, 'admin');
+
+  const final = accounts.byId(account.id);
+  console.log(`Password set for "${final.username}" (id ${final.id}, ${final.role}).`);
 })();

@@ -13,6 +13,8 @@ final class SyncSettings {
     private static let emailKey = "sync.accountEmail"
     private static let deviceIdKey = "sync.deviceId"
     private static let onboardedKey = "sync.hasSeenOnboarding"
+    private static let modeKey = "sync.mode"
+    private static let everConnectedKey = "sync.hasEverConnected"
     // Unchanged from when this held the shared FUNDTRACKER_TOKEN, so a phone
     // that was set up before device tokens existed keeps the token it has and
     // isn't dragged back through onboarding.
@@ -44,13 +46,35 @@ final class SyncSettings {
         didSet { UserDefaults.standard.set(lastSyncedAt, forKey: Self.lastSyncKey) }
     }
 
-    /// Whether first-run setup has been dealt with, either by signing in or by
-    /// declining. The app is the source of truth and works fully offline, so
-    /// connecting a dashboard is an offer, not a gate — but it shouldn't keep
-    /// asking once you've said no.
+    /// Whether first-run setup has been dealt with, either by connecting or by
+    /// choosing offline. The app is the source of truth and works fully
+    /// offline, so a dashboard is an offer, not a gate.
     var hasSeenOnboarding: Bool {
         didSet { UserDefaults.standard.set(hasSeenOnboarding, forKey: Self.onboardedKey) }
     }
+
+    /// How this phone was set up.
+    enum Mode: String {
+        case unset
+        case offline
+        case online
+    }
+
+    var mode: Mode {
+        didSet { UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey) }
+    }
+
+    /// Sticky once an account has been connected, and never cleared by signing
+    /// out. Records that lived under an account belong to that account, so the
+    /// offline option stops being offered — going back would mean claiming data
+    /// the server also holds. A full Reset clears it, because that discards the
+    /// records too.
+    var hasEverConnected: Bool {
+        didSet { UserDefaults.standard.set(hasEverConnected, forKey: Self.everConnectedKey) }
+    }
+
+    /// Offline is only a choice for a phone that has never had an account.
+    var canGoOffline: Bool { !hasEverConnected && !isConfigured }
 
     init() {
         serverURL = UserDefaults.standard.string(forKey: Self.urlKey) ?? ""
@@ -59,10 +83,16 @@ final class SyncSettings {
         deviceId = UserDefaults.standard.string(forKey: Self.deviceIdKey) ?? ""
         lastSyncedAt = UserDefaults.standard.object(forKey: Self.lastSyncKey) as? Date
         hasSeenOnboarding = UserDefaults.standard.bool(forKey: Self.onboardedKey)
+        mode = Mode(rawValue: UserDefaults.standard.string(forKey: Self.modeKey) ?? "") ?? .unset
+        hasEverConnected = UserDefaults.standard.bool(forKey: Self.everConnectedKey)
 
         // A phone that already had a token from before onboarding existed is
         // configured by definition; don't greet it with a setup screen.
-        if isConfigured { hasSeenOnboarding = true }
+        if isConfigured {
+            hasSeenOnboarding = true
+            mode = .online
+            hasEverConnected = true
+        }
     }
 
     var isConfigured: Bool {
@@ -80,6 +110,8 @@ final class SyncSettings {
         token = credential.token
         accountEmail = credential.username
         deviceId = credential.deviceId
+        mode = .online
+        hasEverConnected = true
     }
 
     /// Forgets the token and the account, keeping the server address so signing
@@ -90,6 +122,18 @@ final class SyncSettings {
         accountEmail = ""
         deviceId = ""
         lastSyncedAt = nil
+        // `hasEverConnected` deliberately survives: this phone's records have
+        // been under an account, so offline is no longer on the table.
+    }
+
+    /// Back to a factory phone. Paired with erasing the records, so the
+    /// offline/online question is genuinely open again.
+    func reset() {
+        signOut()
+        serverURL = ""
+        mode = .unset
+        hasEverConnected = false
+        hasSeenOnboarding = false
     }
 }
 

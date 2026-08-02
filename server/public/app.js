@@ -19,6 +19,21 @@ async function api(path, options = {}) {
     throw err;
   }
 
+  if (res.status === 428) {
+    // Default or admin-reset password: nothing else works until it's changed,
+    // and that's done on the admin page.
+    const err = new Error('Set a new password before continuing.');
+    err.mustChangePassword = true;
+    throw err;
+  }
+
+  if (res.status === 403) {
+    const detail = await res.json().catch(() => null);
+    const err = new Error(detail?.message || 'Not allowed.');
+    err.forbidden = true;
+    throw err;
+  }
+
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(detail?.message || `Request failed (${res.status})`);
@@ -319,6 +334,12 @@ async function load() {
     $('dashboard').hidden = false;
     render(data);
   } catch (err) {
+    // The admin account manages the server rather than using it, so it has no
+    // fund to show. Point it somewhere useful instead of at an error.
+    if (err.forbidden || err.mustChangePassword) {
+      window.location.href = '/admin';
+      return;
+    }
     showLogin(err.unauthorized ? '' : err.message);
   }
 }
@@ -344,6 +365,10 @@ $('login-form').addEventListener('submit', async (event) => {
     await load();
   } catch (err) {
     // A 401 here means bad credentials, not an expired session.
+    if (err.forbidden || err.mustChangePassword) {
+      window.location.href = '/admin';
+      return;
+    }
     showLogin(err.unauthorized ? 'Incorrect email or password.' : err.message);
   } finally {
     button.disabled = false;

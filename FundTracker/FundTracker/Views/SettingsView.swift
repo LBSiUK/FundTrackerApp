@@ -61,8 +61,9 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    // Always available: the point of a reset is to get out of
+                    // whatever state you're in, including a broken one.
                     Button("Reset App", role: .destructive) { confirmReset = true }
-                        .disabled(devices.isEmpty && sales.isEmpty)
 
                     if settings.isConfigured {
                         Button("Delete Account", role: .destructive) { showDeleteAccount = true }
@@ -97,9 +98,9 @@ struct SettingsView: View {
                 isPresented: $confirmReset,
                 titleVisibility: .visible
             ) {
-                Button("Erase Everything", role: .destructive) { resetLocalData() }
+                Button("Erase Everything", role: .destructive) { resetEverything() }
             } message: {
-                Text("Deletes every device, part and sale stored here. Your account and anything already on the dashboard are left alone. This can't be undone.")
+                Text("Deletes every device, part and sale stored here, signs out, and starts setup again. Your account and anything already synced to the dashboard are left alone. This can't be undone.")
             }
             .sheet(isPresented: $showDeleteAccount) {
                 DeleteAccountView()
@@ -107,12 +108,18 @@ struct SettingsView: View {
         }
     }
 
-    /// Wipes local records. The account and the server copy are untouched —
-    /// this is "start again on this phone", not "delete everything I own".
-    private func resetLocalData() {
+    /// Wipes local records, signs out and returns to onboarding. The account
+    /// and the server's copy are untouched — this is "start again on this
+    /// phone", not "delete everything I own".
+    private func resetEverything() {
         for device in devices { modelContext.delete(device) }
         for sale in sales { modelContext.delete(sale) }
         try? modelContext.save()
+
+        // Clears hasEverConnected too, so the offline/online question is
+        // genuinely open again rather than half-answered.
+        settings.reset()
+        dismiss()
     }
 
     // MARK: - Connection

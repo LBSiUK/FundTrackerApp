@@ -5,7 +5,7 @@ const store = require('../services/store');
 const summary = require('../services/summary');
 const photos = require('../services/photos');
 const requireToken = require('../middleware/auth');
-const { requireSession } = require('../middleware/session');
+const { requireUser } = require('../middleware/session');
 
 const router = express.Router();
 
@@ -17,10 +17,11 @@ function badRequest(message) {
 }
 
 // POST /api/sync — the iOS app pushes its whole dataset.
-// A full replace rather than a merge: the phone is the source of truth and
-// the dashboard is read-only, so there is nothing on this side to lose.
 //
-// Machine-to-machine, so it uses the bearer token rather than a login session.
+// A full replace rather than a merge: the phone is the source of truth and the
+// dashboard is read-only, so there is nothing on this side to lose. Scoped to
+// the account the device token belongs to, so one user's sync never touches
+// another's records.
 router.post('/sync', requireToken, (req, res, next) => {
   try {
     const { devices, sales } = req.body || {};
@@ -29,28 +30,19 @@ router.post('/sync', requireToken, (req, res, next) => {
       throw badRequest('Body must include "devices" and "sales" arrays.');
     }
 
-    const snapshot = store.write({
-      syncedAt: new Date().toISOString(),
-      devices,
-      sales,
-    });
+    const snapshot = store.write(req.accountId, { devices, sales });
 
     // Photos are referenced by content hash and uploaded separately, so the
-    // sync payload stays small and a photo crosses the network once rather
-    // than on every sync.
+    // sync payload stays small and a photo crosses the network once.
     const referenced = devices.map((device) => device.photoHash).filter(Boolean);
-
-    // The snapshot is a full replace, so a photo the phone no longer refers to
-    // should not survive on this side either.
-    photos.prune(referenced);
+    photos.prune(req.accountId, referenced);
 
     res.json({
       ok: true,
       syncedAt: snapshot.syncedAt,
       deviceCount: devices.length,
       saleCount: sales.length,
-      // The app uploads exactly these next.
-      missingPhotos: photos.missing(referenced),
+      missingPhotos: photos.missing(req.accountId, referenced),
     });
   } catch (err) {
     next(err);
@@ -58,18 +50,18 @@ router.post('/sync', requireToken, (req, res, next) => {
 });
 
 // GET /api/summary — everything the dashboard renders, computed server-side.
-router.get('/summary', requireSession, (req, res, next) => {
+router.get('/summary', requireUser, (req, res, next) => {
   try {
-    res.json(summary.build(store.read()));
+    res.json(summary.build(store.read(req.account.id)));
   } catch (err) {
     next(err);
   }
 });
 
 // GET /api/snapshot — the raw stored payload, handy for backups.
-router.get('/snapshot', requireSession, (req, res, next) => {
+router.get('/snapshot', requireUser, (req, res, next) => {
   try {
-    res.json(store.read());
+    res.json(store.read(req.account.id));
   } catch (err) {
     next(err);
   }

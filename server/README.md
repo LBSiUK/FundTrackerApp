@@ -60,10 +60,19 @@ typed the right address.
 
 ## Storage
 
-`$FUNDTRACKER_DATA_DIR/snapshot.json` (a Docker volume at `/data`). Writes go to
-a temp file and are renamed into place, so an interrupted write can't corrupt
-it. Back up by copying that directory — it also holds `users.json`,
-`devices.json` and `photos/`.
+SQLite at `$FUNDTRACKER_DATA_DIR/fundtracker.db` (a Docker volume at `/data`),
+through Node's built-in `node:sqlite` — no native module, no build toolchain in
+the image. Photo bytes sit beside it in `photos/`.
+
+Back up by copying the whole directory. Foreign keys are on and WAL is enabled,
+so copy while the server is stopped, or use `sqlite3 ... ".backup"`.
+
+Accounts, devices, invites, snapshots and photo ownership are all keyed by
+`accounts.id`, which is what makes renaming an account safe.
+
+On first start the server migrates any `users.json` / `devices.json` /
+`invites.json` / `snapshot.json` it finds and renames them `.migrated`. Password
+hashes carry across unchanged, so nobody's password breaks.
 
 Photos are stored as `photos/<sha256>.jpg`, named by their own content. The
 sync response tells the phone which hashes are missing and only those are
@@ -105,6 +114,13 @@ plaintext exists once, in the response that created it.
 ```sh
 node scripts/set-password.js you@example.com --admin
 ```
+
+A server with no accounts creates `admin` / `defaultadmin` on first start, with
+`must_change_password` set — it can sign in and do nothing else until the
+password is replaced. Change it immediately; the default is published here.
+
+The admin account reaches `/admin` and nothing else. It has no fund data, can't
+sync, and can't sign in from the iOS app.
 
 Three invariants are enforced in `routes/admin.js` rather than in the page,
 because the page isn't the only possible caller:

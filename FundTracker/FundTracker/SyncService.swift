@@ -98,6 +98,9 @@ enum SyncError: LocalizedError {
     case codeExpired
     case accountExists
     case weakPassword(Int)
+    case passwordMismatch
+    case passwordChangeRequired
+    case adminHasNoFund
     case server(String)
     case transport(String)
 
@@ -127,6 +130,12 @@ enum SyncError: LocalizedError {
             "There's already an account with that email. Sign in instead."
         case .weakPassword(let minimum):
             "Use at least \(minimum) characters."
+        case .passwordMismatch:
+            "The passwords don't match."
+        case .passwordChangeRequired:
+            "Set a new password on the website before connecting the app."
+        case .adminHasNoFund:
+            "That's the admin account. Sign in with a normal account to sync."
         case .server(let message):
             message
         case .transport(let message):
@@ -349,6 +358,9 @@ final class SyncService {
         case "code_expired": return .codeExpired
         case "exists": return .accountExists
         case "weak_password": return .weakPassword(12)
+        case "password_mismatch": return .passwordMismatch
+        case "password_change_required": return .passwordChangeRequired
+        case "admin_has_no_fund": return .adminHasNoFund
         case "invalid_credentials": return .badCredentials
         case "too_many_attempts": return .tooManyAttempts
         default: break
@@ -365,6 +377,7 @@ final class SyncService {
         address: String,
         email: String,
         password: String,
+        confirmPassword: String,
         code: String,
         deviceName: String
     ) async throws -> DeviceCredential {
@@ -377,6 +390,9 @@ final class SyncService {
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "email": email.trimmingCharacters(in: .whitespaces).lowercased(),
             "password": password,
+            // Sent so the server checks the match too. A typo'd password you
+            // can't reproduce is indistinguishable from a lost account.
+            "confirmPassword": confirmPassword,
             "code": code.trimmingCharacters(in: .whitespaces),
             "deviceName": deviceName,
         ])

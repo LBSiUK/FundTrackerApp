@@ -126,19 +126,27 @@ of that one request, and what persists is the token it returns. So the phone
 still holds a write-only credential, exactly as before — the sign-in screen
 changes how the token is obtained, not what it can do.
 
-Each phone gets its own token, hashed with SHA-256 in `data/devices.json`.
+Each phone gets its own token, hashed with SHA-256 in the `devices` table, and
+one account can have many.
 Plain SHA-256 rather than scrypt is deliberate: the token is 32 bytes of CSPRNG
 output, so there's no dictionary to attack and no work factor worth paying.
 Passwords need scrypt because humans choose them.
 
-Revoking one phone (`scripts/devices.js revoke <id>`) doesn't disturb the
-others. The single shared `FUNDTRACKER_TOKEN` couldn't do that — it's still
-accepted so an already-configured phone keeps working, and should be dropped
-from `.env` once every device has signed in.
+Revoking one phone doesn't disturb the others. `FUNDTRACKER_TOKEN` no longer
+does anything: sync is per-account now, and a server-wide token has no account
+to attribute a sync to.
 
-Connecting is optional. The phone is the source of truth and works entirely
-offline; a dashboard only adds a browser view, so onboarding offers "Set Up
-Later" rather than blocking the app behind a server.
+Connecting is optional. First launch asks outright: **use an account** or **stay
+offline**. The phone is the source of truth either way, and a dashboard only
+adds a browser view.
+
+That choice is one-way by design. Offline records can join an account later —
+they simply sync up on first connection. Records that have lived under an
+account can't be taken back offline, because the server also holds them and
+"offline" would then be a half-truth. The app tracks this with a sticky
+`hasEverConnected`, which signing out deliberately does not clear. Only a full
+Reset does, and that discards the records too, so the question is genuinely
+open again.
 
 ## Photos
 
@@ -158,7 +166,11 @@ GET  /api/photos/<hash>   → the JPEG, session cookie only
 ```
 
 The snapshot carries `photoHash` per device; the bytes go up only when the
-server says it hasn't got them. Content-addressing does a lot of work here:
+server says it hasn't got them. **Ownership is per account even though the bytes
+are shared** — two accounts with the same photo store one file and two rows, and
+asking for a photo you don't own is a 404 whether or not the file exists, so one
+user can't probe another's photos by guessing hashes. Content-addressing does a
+lot of work here:
 
 - **A photo crosses the network once.** Re-syncing doesn't re-upload it, which
   is the whole reason this isn't just base64 inside the sync payload.
@@ -170,20 +182,48 @@ server says it hasn't got them. Content-addressing does a lot of work here:
 
 The server verifies that the uploaded bytes actually hash to the claimed name,
 that the body starts with a JPEG marker, and that it's under 3MB. A photo the
-snapshot no longer refers to is pruned on the next sync, so deleting one on the
-phone deletes it here too.
+snapshot no longer refers to is pruned on the next sync — first this account's
+claim on it, then the file itself once no account references it at all.
 
 Photo writes use the device token and photo reads use the browser session, so
 the read/write split survives: a token lifted off a phone can add a photo but
 still can't look at one.
 
-## Accounts
+## Accounts and the database
 
-Two roles: `user` and `admin`. Admins reach `/admin`, where accounts are managed
-and activation codes are issued. Everyone else gets the dashboard only. The role
-is read from `users.json` on every request rather than carried in the session
-cookie, so demoting an admin takes effect immediately instead of whenever their
-30-day session happens to lapse.
+State lives in SQLite (`data/fundtracker.db`) via Node's built-in `node:sqlite`,
+so there's no native module to compile and the Alpine image needs no toolchain.
+It was JSON files until accounts needed identity separate from their name.
+
+**Everything hangs off `accounts.id`, never off a username.** That's the whole
+reason for the move: renaming an account is one `UPDATE`, and its devices,
+invites, snapshot and photos follow because they reference the id. Sessions
+carry the id too, so a rename doesn't sign anyone out.
+
+```
+accounts ──┬── devices    (one account, many phones)
+           ├── invites    (created_by / used_by)
+           ├── snapshots  (exactly one per account)
+           └── photos     (ownership; bytes are shared on disk)
+```
+
+**Fund data is per account.** There used to be one server-wide `snapshot.json`,
+which was fine with exactly one user and silently wrong with two — the second
+phone's sync would replace the first's records. Every read and write is now
+scoped to an account id.
+
+Two roles: `user` and `admin`. Admins reach `/admin` and **nothing else** — no
+dashboard, no sync, no photos. The admin account manages the server rather than
+using it, so it has no fund of its own; `requireUser` rejects it from every fund
+route. Role and active state are read from the database on every request rather
+than carried in the cookie, so demoting an admin takes effect immediately.
+
+An `admin` account is created at first startup with the password
+`defaultadmin` and `must_change_password` set. That default is only tolerable
+because the flag makes the account useless until it's replaced: `requireSession`
+returns 428 for everything except the change-password endpoint. **Change it the
+first time you sign in** — it is a published constant on an internet-facing
+server.
 
 **Registration is closed by design.** Creating an account requires a one-time
 activation code, so a login page on the public internet isn't also a sign-up

@@ -7,7 +7,8 @@ const authRouter    = require('./routes/auth');
 const devicesRouter = require('./routes/devices');
 const photosRouter  = require('./routes/photos');
 const adminRouter   = require('./routes/admin');
-const users        = require('./services/users');
+const accounts     = require('./services/accounts');
+const bootstrap    = require('./services/bootstrap');
 const session      = require('./middleware/session');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -54,7 +55,10 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     service: 'fundtracker',
-    setupRequired: !users.hasAnyUser(),
+    // Registration is closed and an admin always exists after bootstrap, so
+    // there is no "set me up" state left to report. Kept for older app builds
+    // that read the field.
+    setupRequired: false,
   });
 });
 
@@ -66,21 +70,18 @@ app.use('/api', fundRouter);
 
 app.use(errorHandler);
 
+bootstrap.run({ log: (line) => console.log(`[bootstrap] ${line}`) });
+
 app.listen(PORT, () => {
   console.log(`FundTracker dashboard running at http://localhost:${PORT}`);
   if (!session.hasSecret()) {
     console.warn('WARNING: SESSION_SECRET is not set — nobody will be able to sign in.');
   }
-  if (!users.hasAnyUser()) {
-    console.warn('WARNING: no logins yet — run `node scripts/set-password.js <email> --admin`.');
-    console.warn('         Until then nobody can sign in and no codes can be issued.');
-  } else if (users.countAdmins() === 0) {
-    console.warn('WARNING: no admin account — /admin is unreachable and no activation');
-    console.warn('         codes can be issued. Run `node scripts/set-password.js <email> --admin`.');
-  }
+  console.log(`Accounts: ${accounts.count()}, active admins: ${accounts.countAdmins()}.`);
+
   if (process.env.FUNDTRACKER_TOKEN) {
-    console.warn('NOTE: FUNDTRACKER_TOKEN is set. That shared token still works, but the');
-    console.warn('      app now signs in and gets its own device token. Once every device');
-    console.warn('      has done so, remove it from .env.');
+    console.warn('NOTE: FUNDTRACKER_TOKEN is set but no longer does anything. Sync is now');
+    console.warn('      per-account, and a server-wide token has no account to attribute');
+    console.warn('      a sync to. Remove it from .env.');
   }
 });

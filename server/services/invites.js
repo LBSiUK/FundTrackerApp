@@ -2,32 +2,24 @@
 
 // One-time account activation codes.
 //
-// Registration is closed by default: you cannot create an account on this
-// server without a code an admin generated. That's what keeps a publicly
-// reachable sign-up form from becoming an open door.
+// Registration is closed: you cannot create an account on this server without a
+// code an admin generated. That's what keeps a publicly reachable server from
+// being an open sign-up.
 //
-// Codes are shown as `ABCD-EFGH-JKMN` — 12 symbols from a Crockford-style
-// alphabet with I, L, O and U removed, so nothing reads ambiguously when typed
-// off a screen into a phone. That's 60 bits of entropy, which is far past
-// guessable, and the codes are single-use and expiring on top.
-//
-// Only the SHA-256 of a code is stored. A leaked invites.json therefore gives
-// an attacker nothing usable, and the plaintext exists only in the response
-// that created it.
+// Codes read as `ABCD-EFGH-JKMN` — 12 symbols from a Crockford-style alphabet
+// with I, L, O and U removed, so nothing is ambiguous typed off a screen. 60
+// bits of entropy, single use, expiring. Only the SHA-256 is stored, so a
+// leaked database yields nothing usable.
 
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-
-const DATA_DIR = process.env.FUNDTRACKER_DATA_DIR || path.join(__dirname, '..', 'data');
-const INVITES_PATH = path.join(DATA_DIR, 'invites.json');
+const { db } = require('./db');
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const GROUPS = 3;
 const GROUP_SIZE = 4;
 const DEFAULT_EXPIRY_DAYS = 14;
 
-/** Uppercases and strips separators, so typing lower case or spaces still works. */
+/** Uppercases and strips separators, so lower case or missing dashes still work. */
 function canonical(code) {
   return String(code || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
 }
@@ -49,112 +41,83 @@ function generateCode() {
   return chunks.join('-');
 }
 
-function read() {
-  try {
-    return JSON.parse(fs.readFileSync(INVITES_PATH, 'utf8'));
-  } catch (err) {
-    if (err.code === 'ENOENT') return {};
-    throw err;
-  }
-}
-
-function write(invites) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const tmp = `${INVITES_PATH}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(invites, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, INVITES_PATH);
-}
-
-/**
- * Creates a code. The plaintext is returned once and is not recoverable —
- * losing it means generating another, which is cheap.
- */
-function issue({ createdBy, expiresInDays = DEFAULT_EXPIRY_DAYS, note = '' } = {}) {
-  const code = generateCode();
-  const id = crypto.randomUUID();
-
-  const invites = read();
-  invites[id] = {
-    id,
-    hash: hashCode(code),
-    createdBy: String(createdBy || '').toLowerCase(),
-    createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + expiresInDays * 86400000).toISOString(),
-    note: String(note || '').slice(0, 120),
-    usedAt: null,
-    usedBy: null,
-  };
-  write(invites);
-
-  return { code, id, expiresAt: invites[id].expiresAt };
-}
-
-function statusOf(record) {
-  if (record.usedAt) return 'used';
-  if (new Date(record.expiresAt) < new Date()) return 'expired';
+function statusOf(row) {
+  if (row.used_at) return 'used';
+  if (new Date(row.expires_at) < new Date()) return 'expired';
   return 'active';
 }
 
-/**
- * Checks a code and, if good, marks it used in the same call.
- * Returns { ok: true } or { ok: false, reason }.
- *
- * Consuming and validating are deliberately one operation: leaving a gap
- * between "is this valid" and "mark it used" is how a code gets redeemed twice.
- */
-function consume(code, username) {
-  const supplied = hashCode(code);
-  if (canonical(code).length !== GROUPS * GROUP_SIZE) {
-    return { ok: false, reason: 'invalid' };
-  }
-
-  const invites = read();
-  const match = Object.values(invites).find((record) => {
-    const stored = Buffer.from(record.hash, 'hex');
-    const given = Buffer.from(supplied, 'hex');
-    return stored.length === given.length && crypto.timingSafeEqual(stored, given);
-  });
-
-  if (!match) return { ok: false, reason: 'invalid' };
-
-  const status = statusOf(match);
-  if (status === 'used') return { ok: false, reason: 'used' };
-  if (status === 'expired') return { ok: false, reason: 'expired' };
-
-  match.usedAt = new Date().toISOString();
-  match.usedBy = String(username || '').toLowerCase();
-  write(invites);
-
-  return { ok: true, id: match.id };
+function present(row) {
+  return {
+    id: row.id,
+    note: row.note,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    usedAt: row.used_at,
+    createdByName: row.created_by_name || null,
+    usedByName: row.used_by_name || null,
+    status: statusOf(row),
+  };
 }
 
-/** Everything except the hashes — safe for the admin interface. */
-function list() {
-  return Object.values(read())
-    .map(({ hash, ...rest }) => ({ ...rest, status: statusOf(rest) }))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+/** Creates a code. The plaintext is returned once and isn't recoverable. */
+function issue({ createdBy, expiresInDays = DEFAULT_EXPIRY_DAYS, note = '' } = {}) {
+  const code = generateCode();
+  const id = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
+
+  db.prepare(`
+    INSERT INTO invites (id, code_hash, created_by, note, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, hashCode(code), createdBy || null, String(note || '').slice(0, 120), new Date().toISOString(), expiresAt);
+
+  return { code, id, expiresAt };
+}
+
+/**
+ * Checks a code and marks it used in the same statement.
+ *
+ * The UPDATE ... WHERE used_at IS NULL is the whole point: two registrations
+ * racing on one code produce one row change and one winner. Checking first and
+ * marking later is how a code gets redeemed twice.
+ */
+function consume(code, accountId) {
+  if (canonical(code).length !== GROUPS * GROUP_SIZE) return { ok: false, reason: 'invalid' };
+
+  const row = db.prepare('SELECT * FROM invites WHERE code_hash = ?').get(hashCode(code));
+  if (!row) return { ok: false, reason: 'invalid' };
+  if (row.used_at) return { ok: false, reason: 'used' };
+  if (new Date(row.expires_at) < new Date()) return { ok: false, reason: 'expired' };
+
+  const changed = db.prepare('UPDATE invites SET used_at = ?, used_by = ? WHERE id = ? AND used_at IS NULL')
+    .run(new Date().toISOString(), accountId || null, row.id).changes;
+
+  if (changed === 0) return { ok: false, reason: 'used' };
+  return { ok: true, id: row.id };
+}
+
+function list({ limit = 100, offset = 0 } = {}) {
+  const rows = db.prepare(`
+    SELECT i.*, c.username AS created_by_name, u.username AS used_by_name
+    FROM invites i
+    LEFT JOIN accounts c ON c.id = i.created_by
+    LEFT JOIN accounts u ON u.id = i.used_by
+    ORDER BY i.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(limit, offset);
+
+  const { total } = db.prepare('SELECT COUNT(*) AS total FROM invites').get();
+  return { invites: rows.map(present), total, limit, offset };
 }
 
 function revoke(id) {
-  const invites = read();
-  if (!invites[id]) return false;
-  delete invites[id];
-  write(invites);
-  return true;
+  return db.prepare('DELETE FROM invites WHERE id = ?').run(id).changes > 0;
 }
 
-/** Drops used and expired codes. Housekeeping only; nothing depends on it. */
+/** Drops used and expired codes. Housekeeping only. */
 function purgeSpent() {
-  const invites = read();
-  let removed = 0;
-  for (const [id, record] of Object.entries(invites)) {
-    if (statusOf(record) !== 'active') {
-      delete invites[id];
-      removed += 1;
-    }
-  }
-  if (removed) write(invites);
-  return removed;
+  return db.prepare("DELETE FROM invites WHERE used_at IS NOT NULL OR expires_at < ?")
+    .run(new Date().toISOString()).changes;
 }
 
-module.exports = { issue, consume, list, revoke, purgeSpent, INVITES_PATH };
+module.exports = { issue, consume, list, revoke, purgeSpent };
