@@ -40,6 +40,13 @@ deducted, and hides that second line when there were none.
 **Insights** — the headline cards, the affordability card, two charts and a
 platform breakdown.
 
+The three stat cards and "Parts Still To Buy" are sized to clear the fold
+together on a standard iPhone: "can I afford the rest?" is the question the app
+exists to answer, so reaching it shouldn't need a scroll. That's why `StatCard`
+is tight (14pt vertical padding, 34pt figure, `.caption` strapline) — if it grows
+again, check that block still fits before shipping. The charts below it are meant
+to need scrolling.
+
 **Onboarding** (full-screen on first launch) — the welcome screen asks offline or
 online, then server address, then sign in *or* create an account. Steps carry an
 `.id(step)` and an asymmetric transition, so moving forward slides the next step
@@ -134,6 +141,12 @@ laid over it in a ZStack rather than a bundled image, so it stays sharp at any
 size and takes the tint in both colour schemes. `BrandLockup` adds the wordmark
 in **Didot**, which ships with iOS; if it were ever missing SwiftUI falls back to
 the system face rather than failing to draw.
+
+## Primary actions sit at the bottom
+
+Onboarding's Continue and Sign In are pushed down by a flexible spacer and use
+`.controlSize(.extraLarge)`, so they're full-height iOS buttons within thumb
+reach rather than floating under the content that precedes them.
 
 ## Syncing
 

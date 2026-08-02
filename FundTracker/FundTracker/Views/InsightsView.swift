@@ -43,7 +43,7 @@ struct InsightsView: View {
     // MARK: - Cards
 
     private var headlineCards: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             StatCard(
                 title: "Total Money In",
                 amount: summary.totalIn,

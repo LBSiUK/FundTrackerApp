@@ -24,13 +24,13 @@ struct StatCard<Footer: View>: View {
     @ViewBuilder var footer: Footer
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             Text(title)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Text(amount.currency)
-                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(tint)
                 .contentTransition(.numericText(value: amount))
                 .animation(.snappy, value: amount)
@@ -39,7 +39,7 @@ struct StatCard<Footer: View>: View {
 
             if let caption {
                 Text(caption)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -47,7 +47,10 @@ struct StatCard<Footer: View>: View {
             footer
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
+        // Deliberately tight. Three of these plus the affordability card have
+        // to clear the fold, because "can I afford the rest?" is the question
+        // the app exists to answer and shouldn't need a scroll to reach.
+        .padding(.vertical, 14)
         .padding(.horizontal, 16)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20))
     }

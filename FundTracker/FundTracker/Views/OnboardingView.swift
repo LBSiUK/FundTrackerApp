@@ -191,8 +191,8 @@ struct OnboardingView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            // Pushes Continue toward the bottom, within thumb reach, instead of
-            // leaving dead space under it.
+            // Pushes Continue to the bottom of the screen rather than leaving
+            // dead space beneath it.
             Spacer(minLength: 24)
 
             if let errorMessage {
@@ -212,10 +212,10 @@ struct OnboardingView: View {
                 }
             }
             .buttonStyle(.glassProminent)
+            .controlSize(.extraLarge)
             .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty || isBusy)
-
-            Spacer()
         }
+        .padding(.bottom, 8)
     }
 
     // MARK: - Step 2
@@ -296,6 +296,8 @@ struct OnboardingView: View {
                     .foregroundStyle(Palette.secondary)
             }
 
+            Spacer(minLength: 24)
+
             Button {
                 Task { await submitSignIn() }
             } label: {
@@ -307,10 +309,10 @@ struct OnboardingView: View {
                 }
             }
             .buttonStyle(.glassProminent)
+            .controlSize(.extraLarge)
             .disabled(!canSubmit || isBusy)
-
-            Spacer()
         }
+        .padding(.bottom, 8)
     }
 
     private var canSubmit: Bool {
