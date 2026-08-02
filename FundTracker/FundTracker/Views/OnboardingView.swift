@@ -9,8 +9,9 @@ struct OnboardingView: View {
     @Environment(SyncService.self) private var sync
     @Environment(\.dismiss) private var dismiss
 
-    private enum Step {
-        case choose
+    /// Screens pushed after the first one. The welcome screen is the stack's
+    /// root, so it isn't in here.
+    private enum Route: Hashable {
         case address
         case signIn
     }
@@ -21,7 +22,7 @@ struct OnboardingView: View {
         case createAccount = "Create Account"
     }
 
-    @State private var step: Step = .choose
+    @State private var path: [Route] = []
     @State private var mode: Mode = .signIn
     @State private var address = ""
     @State private var email = ""
@@ -37,60 +38,45 @@ struct OnboardingView: View {
     @State private var confirmedHost = ""
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                // Behind the transition, so the background stays put while the
-                // steps slide over it.
-                Palette.background.ignoresSafeArea()
-
-                Group {
-                    switch step {
-                    case .choose: chooseStep
-                    case .address: addressStep
-                    case .signIn: signInStep
+        // A real navigation stack rather than a hand-rolled transition. Pushing
+        // a destination is what gives the standard slide-in from the right, and
+        // brings the back button and the interactive swipe-back edge gesture
+        // with it — none of which is worth reimplementing.
+        NavigationStack(path: $path) {
+            rootStep
+                .navigationDestination(for: Route.self) { route in
+                    switch route {
+                    case .address:
+                        addressStep.onboardingScreen(title: "Connect")
+                    case .signIn:
+                        signInStep.onboardingScreen(title: mode.rawValue)
                     }
                 }
-                .padding(.horizontal)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                // Order matters, and getting it wrong fails silently: the
-                // transition has to be attached *inside* the identity it
-                // belongs to. With `.id` applied first, the transition ends up
-                // on an outer wrapper that is never inserted or removed, so
-                // nothing animates. Transition first, `.id` last.
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
-                .id(step)
-            }
-            // Keeps the incoming step from spilling outside the screen while
-            // it slides in.
-            .clipped()
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if step != .choose {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Back") { goBack() }
-                            .disabled(isBusy)
-                    }
-                }
-            }
         }
         .onAppear {
             // Pre-fill after a sign-out, so reconnecting isn't a retype.
             if address.isEmpty { address = settings.serverURL }
-            // A phone that has had an account can't go back to offline, so
-            // there's nothing to choose — go straight to the address.
-            if !settings.canGoOffline { step = .address }
+        }
+        .onChange(of: path) { _, newPath in
+            // Leaving the sign-in screen, by the back button or the swipe
+            // gesture, shouldn't leave a password sitting in memory.
+            if !newPath.contains(.signIn) {
+                password = ""
+                confirmPassword = ""
+            }
+            errorMessage = nil
         }
     }
 
-    private var title: String {
-        switch step {
-        case .choose: "Welcome"
-        case .address: "Connect"
-        case .signIn: mode == .signIn ? "Sign In" : "Create Account"
+    /// A phone that has had an account can't go back offline, so there's nothing
+    /// to choose — the address screen is the root instead, and no back button
+    /// offers a way to a decision that isn't available.
+    @ViewBuilder
+    private var rootStep: some View {
+        if settings.canGoOffline {
+            chooseStep.onboardingScreen(title: "Welcome")
+        } else {
+            addressStep.onboardingScreen(title: "Connect")
         }
     }
 
@@ -112,9 +98,7 @@ struct OnboardingView: View {
 
             VStack(spacing: 14) {
                 Button {
-                    // Animated here rather than in the view body so only a
-                    // deliberate step change slides.
-                    withAnimation(.easeInOut(duration: 0.32)) { step = .address }
+                    path.append(.address)
                 } label: {
                     choice(
                         title: "Use an account",
@@ -338,15 +322,6 @@ struct OnboardingView: View {
         dismiss()
     }
 
-    private func goBack() {
-        password = ""
-        confirmPassword = ""
-        errorMessage = nil
-        withAnimation(.easeInOut(duration: 0.32)) {
-            step = step == .signIn ? .address : (settings.canGoOffline ? .choose : .address)
-        }
-    }
-
     private func checkAddress() async {
         errorMessage = nil
         isBusy = true
@@ -361,7 +336,7 @@ struct OnboardingView: View {
             }
 
             confirmedHost = ServerAddress.normalise(address)?.host ?? address
-            withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
+            path.append(.signIn)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -405,6 +380,24 @@ struct OnboardingView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+/// Shared chrome for every onboarding screen.
+private extension View {
+    func onboardingScreen(title: String) -> some View {
+        self
+            .padding(.horizontal)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            // `ignoresSafeArea` goes on the *background colour*, not the
+            // container. That lets the colour run under the navigation bar and
+            // home indicator while the content stays inside them. Clipping the
+            // container instead — which is what the previous version did —
+            // trims the colour back to the safe area and leaves white bands at
+            // the top and bottom.
+            .background(Palette.background.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 

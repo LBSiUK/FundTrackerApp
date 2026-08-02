@@ -45,11 +45,19 @@ online, then server address, then sign in *or* create an account. Steps carry an
 `.id(step)` and an asymmetric transition, so moving forward slides the next step
 in from the right while the current one leaves left.
 
-**Modifier order on the transition is load-bearing and fails silently.** The
-transition must be attached *inside* the identity it belongs to — `.transition()`
-first, `.id(step)` last. With `.id` applied first, the transition lands on an
-outer wrapper that is never inserted or removed, so the step swaps instantly and
-nothing warns you. That exact mistake shipped once already.
+**It's a real `NavigationStack`, not a hand-rolled transition.** Screens are
+pushed with `navigationDestination(for:)` onto a `path`, which is what gives the
+standard push animation, the back button and the interactive swipe-back edge
+gesture. An earlier version animated a `switch` with `.transition` and `.id`;
+that took two attempts to get the modifier order right, still didn't match the
+system feel, and threw away the back gesture. If a flow reads as a stack of
+screens, push them.
+
+**Backgrounds use `.background(colour.ignoresSafeArea())`, never a clipped
+container.** Putting `ignoresSafeArea` on the colour lets it run under the
+navigation bar and home indicator while the content stays inside them. Clipping
+the container instead trims the colour back to the safe area and leaves white
+bands top and bottom — which is exactly what happened once.
 
 Its presentation is a **computed binding** over `settings.hasSeenOnboarding`, not
 `@State` seeded in `.task`. That was a real bug: Reset App cleared the flag and
@@ -211,8 +219,16 @@ xcrun simctl io <device> recordVideo --codec h264 --force out.mp4 &
 ffmpeg -ss <start> -i out.mp4 -vf "fps=60,scale=240:-1" frames/%03d.png
 ```
 
-A working animation gives a ramp-plateau-taper across the frames lasting its
-stated duration. A broken one gives a single large jump between two frames and
-nothing either side — which is exactly how the `.id`/`.transition` ordering bug
-above was caught. Pull two frames a few tens of milliseconds apart and stack them
-with `hstack` to see the direction of travel.
+A working animation gives sustained change across many frames for its full
+duration. A broken one gives a single large jump between two frames and nothing
+either side. A native push shows a front-loaded decay over roughly 470ms — fast
+start, long settle — which is visibly different from a hand-rolled linear ease.
+
+To see *what* moved rather than just how much, tile a wide window into one image:
+
+```sh
+ffmpeg -ss <start> -t 1 -i out.mp4 -vf "fps=10,scale=170:-1,tile=10x1" strip.png
+```
+
+That shows the whole transition at a glance — the outgoing screen parallaxing
+left while the incoming slides in, and whether the back chevron appears.
