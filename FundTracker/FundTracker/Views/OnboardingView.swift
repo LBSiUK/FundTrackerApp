@@ -38,24 +38,34 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch step {
-                case .choose: chooseStep
-                case .address: addressStep
-                case .signIn: signInStep
+            ZStack {
+                // Behind the transition, so the background stays put while the
+                // steps slide over it.
+                Palette.background.ignoresSafeArea()
+
+                Group {
+                    switch step {
+                    case .choose: chooseStep
+                    case .address: addressStep
+                    case .signIn: signInStep
+                    }
                 }
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // Order matters, and getting it wrong fails silently: the
+                // transition has to be attached *inside* the identity it
+                // belongs to. With `.id` applied first, the transition ends up
+                // on an outer wrapper that is never inserted or removed, so
+                // nothing animates. Transition first, `.id` last.
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing),
+                    removal: .move(edge: .leading)
+                ))
+                .id(step)
             }
-            // Each step is a distinct view as far as SwiftUI is concerned, so
-            // it can slide the new one in from the right while the old one
-            // leaves to the left — forward motion, the way a stack reads.
-            .id(step)
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing),
-                removal: .move(edge: .leading)
-            ))
-            .padding(.horizontal)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Palette.background)
+            // Keeps the incoming step from spilling outside the screen while
+            // it slides in.
+            .clipped()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

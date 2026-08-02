@@ -45,6 +45,12 @@ online, then server address, then sign in *or* create an account. Steps carry an
 `.id(step)` and an asymmetric transition, so moving forward slides the next step
 in from the right while the current one leaves left.
 
+**Modifier order on the transition is load-bearing and fails silently.** The
+transition must be attached *inside* the identity it belongs to — `.transition()`
+first, `.id(step)` last. With `.id` applied first, the transition lands on an
+outer wrapper that is never inserted or removed, so the step swaps instantly and
+nothing warns you. That exact mistake shipped once already.
+
 Its presentation is a **computed binding** over `settings.hasSeenOnboarding`, not
 `@State` seeded in `.task`. That was a real bug: Reset App cleared the flag and
 nothing happened, because the task had already run and never ran again. Reading
@@ -192,3 +198,21 @@ of an empty store, temporarily point `FundTrackerApp` at
 
 Simulator has no camera, so the "Take Photo" button correctly hides itself there
 (`UIImagePickerController.isCameraAvailable`).
+
+## Verifying an animation without tapping
+
+Driving the simulator by touch needs accessibility permission that isn't always
+available. Animations can still be checked: record the screen, then measure how
+much changes between frames.
+
+```sh
+xcrun simctl io <device> recordVideo --codec h264 --force out.mp4 &
+# …trigger the change…
+ffmpeg -ss <start> -i out.mp4 -vf "fps=60,scale=240:-1" frames/%03d.png
+```
+
+A working animation gives a ramp-plateau-taper across the frames lasting its
+stated duration. A broken one gives a single large jump between two frames and
+nothing either side — which is exactly how the `.id`/`.transition` ordering bug
+above was caught. Pull two frames a few tens of milliseconds apart and stack them
+with `hstack` to see the direction of travel.
