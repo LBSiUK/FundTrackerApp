@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftData
 import SwiftUI
@@ -45,6 +46,14 @@ final class Device {
     var partList: [Part] { parts ?? [] }
 
     var hasPhoto: Bool { photoData != nil }
+
+    /// SHA-256 of the stored JPEG, which is how the server names it. Computed
+    /// rather than stored so it can never drift from the bytes it describes;
+    /// hashing a few hundred KB at sync time is not worth caching.
+    var photoHash: String? {
+        guard let photoData else { return nil }
+        return SHA256.hash(data: photoData).map { String(format: "%02x", $0) }.joined()
+    }
 
     /// What this device has actually cost so far.
     var spent: Double {

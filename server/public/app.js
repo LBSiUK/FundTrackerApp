@@ -239,7 +239,7 @@ function render(data) {
       const amount = document.createElement('span');
       amount.className = 'amount';
       amount.textContent = gbp.format(entry.amount);
-      li.append(name, amount);
+      li.append(label, amount);
       return li;
     })
   );
@@ -249,14 +249,31 @@ function render(data) {
   $('devices-list').replaceChildren(
     ...data.devices.map((device) => {
       const li = document.createElement('li');
+
+      // Photos are served from /api/photos/<hash> behind the same session
+      // cookie as everything else, so the browser sends it automatically.
+      const label = document.createElement('span');
+      label.className = 'device-label';
+      if (device.photoHash) {
+        const img = document.createElement('img');
+        img.className = 'device-thumb';
+        img.src = `/api/photos/${device.photoHash}`;
+        img.alt = '';
+        img.loading = 'lazy';
+        // A photo that's referenced but not uploaded yet shouldn't leave a
+        // broken-image icon in the list.
+        img.addEventListener('error', () => img.remove());
+        label.append(img);
+      }
       const name = document.createElement('span');
       name.textContent = `${device.name} · ${device.status}`;
+      label.append(name);
       const amount = document.createElement('span');
       amount.className = 'amount';
       amount.textContent = device.outstanding > 0
         ? `${gbp.format(device.outstanding)} to buy`
         : `${gbp.format(device.spent)} spent`;
-      li.append(name, amount);
+      li.append(label, amount);
       return li;
     })
   );

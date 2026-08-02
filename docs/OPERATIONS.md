@@ -87,6 +87,12 @@ Everything that matters is in `~/fundtracker/data/`:
 - `users.json` — login hashes (mode 600)
 - `devices.json` — hashed device tokens (mode 600). Lose it and every phone
   needs to sign in again; nothing else breaks.
+- `photos/` — device photos, named by content hash. Lose them and the next sync
+  re-uploads from the phone, since that's still where they originate.
+
+```sh
+du -sh ~/fundtracker/data/photos     # how much space photos are taking
+```
 
 ```sh
 tar czf ~/fundtracker-backup-$(date +%F).tar.gz -C ~/fundtracker data

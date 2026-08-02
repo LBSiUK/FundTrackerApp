@@ -4,6 +4,7 @@ const express      = require('express');
 const fundRouter    = require('./routes/fund');
 const authRouter    = require('./routes/auth');
 const devicesRouter = require('./routes/devices');
+const photosRouter  = require('./routes/photos');
 const users        = require('./services/users');
 const session      = require('./middleware/session');
 const errorHandler = require('./middleware/errorHandler');
@@ -51,6 +52,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/devices', devicesRouter);
+app.use('/api/photos', photosRouter);
 app.use('/api', fundRouter);
 
 app.use(errorHandler);

@@ -118,11 +118,16 @@ struct SettingsView: View {
         case .success:
             Label("Pushed to the dashboard.", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(Palette.accent)
+        case .uploadingPhotos(let done, let total):
+            Text("Uploading photos… \(done) of \(total)")
+        case .partial(let message):
+            Label(message, systemImage: "exclamationmark.circle.fill")
+                .foregroundStyle(Palette.secondary)
         case .failure(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(Palette.secondary)
         case .idle, .syncing:
-            Text("Sends everything to your dashboard, replacing what's there.")
+            Text("Sends everything to your dashboard, replacing what's there. Device photos are uploaded too.")
         }
     }
 }

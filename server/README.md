@@ -48,6 +48,8 @@ it from `.env` once every device has signed in.
 | GET    | `/api/snapshot`     | Session | Raw payload, for backups         |
 | GET    | `/api/devices`      | Session | Phones that can sync             |
 | DELETE | `/api/devices/:id`  | Session | Revoke one                       |
+| POST   | `/api/photos/:hash` | Bearer  | Upload a device photo (raw JPEG body) |
+| GET    | `/api/photos/:hash` | Session | Serve it                         |
 
 `/api/health` returns `{"service":"fundtracker"}`. The app checks that field
 rather than just the status code — a 200 from an unrelated host is not proof you
@@ -57,8 +59,15 @@ typed the right address.
 
 `$FUNDTRACKER_DATA_DIR/snapshot.json` (a Docker volume at `/data`). Writes go to
 a temp file and are renamed into place, so an interrupted write can't corrupt
-it. Back up by copying that directory — it also holds `users.json` and
-`devices.json`.
+it. Back up by copying that directory — it also holds `users.json`,
+`devices.json` and `photos/`.
+
+Photos are stored as `photos/<sha256>.jpg`, named by their own content. The
+sync response tells the phone which hashes are missing and only those are
+uploaded, so a photo crosses the network once rather than on every sync. Uploads
+are verified: the bytes must hash to the claimed name, start with a JPEG marker,
+and be under 3MB. Photos the current snapshot doesn't reference are pruned on
+the next sync.
 
 ## Run locally
 
@@ -141,4 +150,5 @@ HttpOnly cookie. Worth doing periodically:
 docker logs fundtracker-caddy | grep -c ' 401 '   # failed sign-ins
 ```
 
-Device photos are never uploaded; they stay on the phone.
+Device photos **are** uploaded and are readable by anyone who can sign in, so
+the dashboard password now guards your photos as well as your figures.

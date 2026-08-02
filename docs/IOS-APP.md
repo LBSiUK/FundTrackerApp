@@ -64,6 +64,13 @@ are enormous compared to a 44pt thumbnail. `DevicePhoto` renders the photo when
 present and falls back to the SF Symbol otherwise, so devices without photos are
 unaffected.
 
+**Photos are uploaded, and `Device.photoHash` is computed, not stored.** It's the
+SHA-256 of the JPEG, recomputed at sync time so it can never drift from the bytes
+it names. The sync payload carries only the hash; `uploadPhotos` then sends just
+the ones the server reported as missing. A failed photo upload downgrades the
+sync to `.partial` rather than `.failure` — the records are already safely
+stored by that point and the money figures are correct regardless.
+
 **The token is in the Keychain**, not UserDefaults — it's a credential.
 `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. The password that obtained it is
 never persisted anywhere; it's cleared from `@State` as soon as the sign-in call

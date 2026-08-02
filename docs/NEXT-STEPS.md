@@ -29,9 +29,10 @@ anything you write into the docs is world-readable.
 automatically on app background, or after any edit with a debounce. Neither is
 built.
 
-**Photos aren't uploaded.** Deliberate — they'd bloat the payload and the
-dashboard doesn't show them. If you want them on the dashboard, it needs
-multipart upload, server-side storage, and a size budget.
+**Photo storage has no overall budget.** Individual uploads are capped at 3MB
+and orphans are pruned on each sync, but nothing stops the total growing. At
+roughly 200–400KB per photo it would take hundreds of devices to matter; worth a
+`du -sh ~/fundtracker/data/photos` if the box ever gets tight.
 
 **The dashboard is read-only.** Editing from a browser would need bidirectional
 sync, which breaks the "full replace" assumption that keeps the whole thing

@@ -110,6 +110,7 @@ function build(snapshot) {
       name: d.name,
       status: d.status,
       symbolName: d.symbolName,
+      photoHash: d.photoHash || null,
       spent: round2(deviceSpent(d)),
       outstanding: round2(deviceOutstanding(d)),
       parts: d.parts || [],

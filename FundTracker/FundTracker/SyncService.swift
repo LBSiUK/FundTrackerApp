@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftData
 
@@ -19,6 +20,9 @@ private struct DeviceDTO: Encodable {
     let symbolName: String
     let notes: String
     let dateAdded: Date
+    /// SHA-256 of the JPEG, or nil. The photo itself is uploaded separately —
+    /// see `uploadPhotos`.
+    let photoHash: String?
     let parts: [PartDTO]
 }
 
@@ -48,6 +52,8 @@ private struct SyncResponse: Decodable {
     let syncedAt: String
     let deviceCount: Int
     let saleCount: Int
+    /// Hashes the server doesn't hold yet. Absent on an older server.
+    let missingPhotos: [String]?
 }
 
 private struct ServerError: Decodable {
@@ -149,13 +155,22 @@ final class SyncService {
     enum State: Equatable {
         case idle
         case syncing
+        case uploadingPhotos(done: Int, total: Int)
         case success(Date)
+        /// Records went up but some photos didn't. Worth distinguishing from a
+        /// failed sync — the figures on the dashboard are correct either way.
+        case partial(String)
         case failure(String)
     }
 
     private(set) var state: State = .idle
 
-    var isSyncing: Bool { state == .syncing }
+    var isSyncing: Bool {
+        switch state {
+        case .syncing, .uploadingPhotos: true
+        case .idle, .success, .partial, .failure: false
+        }
+    }
 
     func sync(devices: [Device], sales: [Sale], settings: SyncSettings) async {
         guard settings.isConfigured else {
@@ -167,10 +182,80 @@ final class SyncService {
         do {
             let response = try await push(devices: devices, sales: sales, settings: settings)
             settings.lastSyncedAt = Date()
-            state = .success(Date())
-            _ = response
+
+            // Records are safely stored by this point. Photos are a second
+            // pass, so a failure here doesn't cost you the sync.
+            let failed = await uploadPhotos(
+                hashes: response.missingPhotos ?? [],
+                devices: devices,
+                settings: settings
+            )
+
+            if failed > 0 {
+                state = .partial("Synced, but \(failed) photo\(failed == 1 ? "" : "s") didn't upload. Try again.")
+            } else {
+                state = .success(Date())
+            }
         } catch {
             state = .failure(error.localizedDescription)
+        }
+    }
+
+    /// Sends only the photos the server said it was missing. Returns how many
+    /// failed. Content-addressed, so retrying is always safe.
+    private func uploadPhotos(
+        hashes: [String],
+        devices: [Device],
+        settings: SyncSettings
+    ) async -> Int {
+        guard !hashes.isEmpty else { return 0 }
+
+        // Hash -> bytes, built once. Two devices sharing a photo upload it once.
+        var byHash: [String: Data] = [:]
+        for device in devices {
+            if let hash = device.photoHash, let data = device.photoData {
+                byHash[hash] = data
+            }
+        }
+
+        var failed = 0
+        var done = 0
+        let wanted = hashes.filter { byHash[$0] != nil }
+        state = .uploadingPhotos(done: 0, total: wanted.count)
+
+        for hash in wanted {
+            guard let data = byHash[hash] else { continue }
+            do {
+                try await uploadPhoto(hash: hash, data: data, settings: settings)
+            } catch {
+                failed += 1
+            }
+            done += 1
+            state = .uploadingPhotos(done: done, total: wanted.count)
+        }
+
+        return failed
+    }
+
+    private func uploadPhoto(hash: String, data: Data, settings: SyncSettings) async throws {
+        guard let base = ServerAddress.normalise(settings.serverURL) else {
+            throw SyncError.invalidURL
+        }
+
+        var request = URLRequest(url: base.appendingPathComponent("api/photos/\(hash)"))
+        request.httpMethod = "POST"
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(settings.token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 60
+        request.httpBody = data
+
+        let (body, http) = try await send(request)
+
+        if http.statusCode == 401 { throw SyncError.unauthorized }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let detail = (try? JSONDecoder().decode(ServerError.self, from: body))?.message
+            throw SyncError.server(detail ?? "Photo upload returned \(http.statusCode).")
         }
     }
 
@@ -302,8 +387,9 @@ final class SyncService {
                     symbolName: device.symbolName,
                     notes: device.notes,
                     dateAdded: device.dateAdded,
-                    // Photos stay on the phone — they'd bloat the payload and the
-                    // dashboard doesn't show them.
+                    // Just the hash here; the bytes go up separately and only
+                    // when the server says it hasn't got them.
+                    photoHash: device.photoHash,
                     parts: device.partList.map { part in
                         PartDTO(
                             id: part.persistentModelID.storeIdentifier ?? UUID().uuidString,

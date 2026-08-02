@@ -5,10 +5,10 @@
 ```
 ┌─────────────────┐
 │   iPhone        │  SwiftData store on device — the source of truth
-│   FundTracker   │  Photos stay here, never uploaded
+│   FundTracker   │  Photos upload separately, by content hash
 └────────┬────────┘
-         │ POST /api/sync   (Bearer token, HTTPS)
-         │ full replace, no merge
+         │ POST /api/sync     (Bearer token, HTTPS) full replace, no merge
+         │ POST /api/photos/… (Bearer token, HTTPS) only what's missing
          ▼
    internet ──443──▶ Caddy (TLS, Let's Encrypt)  ──▶  app:3100
                      fundtracker.example.com              Docker internal network
@@ -36,6 +36,7 @@ resolution, and no risk in a full replace — there is nothing on that side to l
     {
       "id": "...", "name": "iPhone 13", "status": "Needs Parts",
       "symbolName": "iphone", "notes": "", "dateAdded": "ISO8601",
+      "photoHash": "sha256 hex, or null",
       "parts": [
         { "id": "...", "name": "Screen", "unitCost": 78, "quantity": 1,
           "isPurchased": true, "purchaseDate": "ISO8601", "supplier": "" }
@@ -69,6 +70,9 @@ Dates are ISO8601 (`JSONEncoder.dateEncodingStrategy = .iso8601`).
 
 That flag is the heart of the app. It's what lets the dashboard answer whether
 the balance covers the outstanding parts.
+
+**Photo** — optional, one per device, downscaled to 1280px JPEG at quality 0.8
+before it leaves the phone. See "Photos" below.
 
 **Sale** — money in. Has `grossAmount` (what the buyer paid), `fees` (platform
 commission) and `shippingCost` (postage you paid). `netAmount = gross − fees −
@@ -135,6 +139,43 @@ from `.env` once every device has signed in.
 Connecting is optional. The phone is the source of truth and works entirely
 offline; a dashboard only adds a browser view, so onboarding offers "Set Up
 Later" rather than blocking the app behind a server.
+
+## Photos
+
+Photos used to stay on the phone. They don't any more — they're uploaded and
+served on the dashboard. That's a real change in exposure, and worth stating
+plainly: **your device photos now live on the server**, are included in
+`data/` backups, and are readable by anyone who can sign in to the dashboard.
+The phone is still where they originate and still the source of truth.
+
+They travel separately from the sync payload, addressed by the SHA-256 of the
+JPEG:
+
+```
+POST /api/sync            → { …, missingPhotos: ["<hash>", …] }
+POST /api/photos/<hash>   → raw JPEG body, Bearer token
+GET  /api/photos/<hash>   → the JPEG, session cookie only
+```
+
+The snapshot carries `photoHash` per device; the bytes go up only when the
+server says it hasn't got them. Content-addressing does a lot of work here:
+
+- **A photo crosses the network once.** Re-syncing doesn't re-upload it, which
+  is the whole reason this isn't just base64 inside the sync payload.
+- **Retrying is always safe.** The same bytes produce the same name, so a
+  half-finished upload run costs nothing to repeat.
+- **Filenames are never caller-chosen.** The name is derived from the content
+  and checked against `^[a-f0-9]{64}$` before touching the filesystem.
+- **The same photo on two devices is stored once.**
+
+The server verifies that the uploaded bytes actually hash to the claimed name,
+that the body starts with a JPEG marker, and that it's under 3MB. A photo the
+snapshot no longer refers to is pruned on the next sync, so deleting one on the
+phone deletes it here too.
+
+Photo writes use the device token and photo reads use the browser session, so
+the read/write split survives: a token lifted off a phone can add a photo but
+still can't look at one.
 
 ## Time zones
 

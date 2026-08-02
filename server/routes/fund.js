@@ -3,6 +3,7 @@
 const express = require('express');
 const store = require('../services/store');
 const summary = require('../services/summary');
+const photos = require('../services/photos');
 const requireToken = require('../middleware/auth');
 const { requireSession } = require('../middleware/session');
 
@@ -34,11 +35,22 @@ router.post('/sync', requireToken, (req, res, next) => {
       sales,
     });
 
+    // Photos are referenced by content hash and uploaded separately, so the
+    // sync payload stays small and a photo crosses the network once rather
+    // than on every sync.
+    const referenced = devices.map((device) => device.photoHash).filter(Boolean);
+
+    // The snapshot is a full replace, so a photo the phone no longer refers to
+    // should not survive on this side either.
+    photos.prune(referenced);
+
     res.json({
       ok: true,
       syncedAt: snapshot.syncedAt,
       deviceCount: devices.length,
       saleCount: sales.length,
+      // The app uploads exactly these next.
+      missingPhotos: photos.missing(referenced),
     });
   } catch (err) {
     next(err);
