@@ -93,11 +93,48 @@ sums otherwise surface as `204.60000000000002`.
 
 | Caller | Credential | Can reach |
 |---|---|---|
-| iOS app | Bearer token (`FUNDTRACKER_TOKEN`) | `POST /api/sync` only — write, no read |
-| Browser | username + password → session cookie | `GET /api/summary`, `/api/snapshot` — read, no write |
+| iOS app | Per-device Bearer token | `POST /api/sync` only — write, no read |
+| Browser | email + password → session cookie | `GET /api/summary`, `/api/snapshot`, `/api/devices` — read, no write |
 
 The token cannot read your data; the login cannot push data. If the token leaked
 off the phone, nobody could view your records with it.
+
+## Connecting a phone
+
+First launch asks for a server address before it asks for anything else:
+
+```
+   enter address  ──▶  GET /api/health  ──▶  is service == "fundtracker"?
+                                                    │
+                                                    ▼
+   email + password  ──▶  POST /api/auth/device  ──▶  { token, deviceId }
+                                                    │
+                                                    ▼
+                                        token → Keychain, password discarded
+```
+
+Two steps rather than one form, so the address is proven to be a FundTracker
+server before anyone types a password into it. Checking `service` matters: a 200
+from an unrelated host is not evidence you typed the right address.
+
+**The password is never stored on the phone.** It exists only for the duration
+of that one request, and what persists is the token it returns. So the phone
+still holds a write-only credential, exactly as before — the sign-in screen
+changes how the token is obtained, not what it can do.
+
+Each phone gets its own token, hashed with SHA-256 in `data/devices.json`.
+Plain SHA-256 rather than scrypt is deliberate: the token is 32 bytes of CSPRNG
+output, so there's no dictionary to attack and no work factor worth paying.
+Passwords need scrypt because humans choose them.
+
+Revoking one phone (`scripts/devices.js revoke <id>`) doesn't disturb the
+others. The single shared `FUNDTRACKER_TOKEN` couldn't do that — it's still
+accepted so an already-configured phone keeps working, and should be dropped
+from `.env` once every device has signed in.
+
+Connecting is optional. The phone is the source of truth and works entirely
+offline; a dashboard only adds a browser view, so onboarding offers "Set Up
+Later" rather than blocking the app behind a server.
 
 ## Time zones
 

@@ -44,17 +44,34 @@ docker compose down && docker compose up -d   # full cycle
 
 # change or add a login (prompts twice, no echo, 12 char minimum)
 docker exec -it fundtracker node scripts/set-password.js <username>
+
+# logins
+docker exec -it fundtracker node scripts/users.js list
+docker exec -it fundtracker node scripts/users.js delete <username>
+
+# phones allowed to sync
+docker exec -it fundtracker node scripts/devices.js list
+docker exec -it fundtracker node scripts/devices.js revoke <id>
 ```
+
+Deleting a login also revokes the device tokens issued to it, so a phone can't
+outlive the account it signed in as.
 
 ## Secrets
 
-`~/fundtracker/.env`, mode 600, three keys:
+`~/fundtracker/.env`, mode 600:
 
 | Key | Purpose | If rotated |
 |---|---|---|
-| `FUNDTRACKER_TOKEN` | the phone's sync credential | update it in the iOS app's Settings |
 | `SESSION_SECRET` | signs login cookies | everyone is signed out |
 | `FUND_DOMAIN` | the hostname Caddy gets a cert for | Caddy re-requests a certificate |
+| `FUNDTRACKER_TOKEN` | *legacy.* The old shared sync token | any phone still using it stops syncing until it signs in |
+
+`FUNDTRACKER_TOKEN` is no longer required. Phones now sign in and get their own
+token, stored hashed in `data/devices.json`. Once
+`docker exec -it fundtracker node scripts/devices.js list` shows every phone you
+own, delete the line from `.env` and `docker compose up -d` — the server logs a
+reminder on startup while it's still set.
 
 All generated on the server with `openssl rand -hex 32`. To read one:
 `grep FUNDTRACKER_TOKEN ~/fundtracker/.env`.
@@ -68,6 +85,8 @@ Everything that matters is in `~/fundtracker/data/`:
 
 - `snapshot.json` — your synced records
 - `users.json` — login hashes (mode 600)
+- `devices.json` — hashed device tokens (mode 600). Lose it and every phone
+  needs to sign in again; nothing else breaks.
 
 ```sh
 tar czf ~/fundtracker-backup-$(date +%F).tar.gz -C ~/fundtracker data
@@ -132,9 +151,17 @@ help, because the stale copy is upstream. Either wait it out or switch DNS to
 Nothing has been synced. Open the app → Insights → gear → Sync Now.
 
 **Sync fails from the phone**
-Check the server URL is `https://fundtracker.example.com` with no trailing slash,
-and that the token matches `FUNDTRACKER_TOKEN` on the server. The error text in
-Settings distinguishes a rejected token from a transport failure.
+"The server rejected this device" means the token was revoked (or the account
+deleted) — sign in again from Settings. Anything else is a transport failure:
+check the server address, which Settings shows as a hostname.
+
+**Onboarding says "it isn't a FundTracker server"**
+Something answered but `/api/health` didn't return `service: fundtracker`. Either
+the address is wrong, or the wildcard DNS trap below sent you to InfinityFree.
+
+**Onboarding says "that server has no accounts yet"**
+`/api/health` reported `setupRequired`. Run
+`docker exec -it fundtracker node scripts/set-password.js <username>`.
 
 **Locked out after too many attempts**
 10 failed logins per IP per 15 minutes. Wait it out, or

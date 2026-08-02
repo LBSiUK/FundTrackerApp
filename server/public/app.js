@@ -327,7 +327,7 @@ $('login-form').addEventListener('submit', async (event) => {
     await load();
   } catch (err) {
     // A 401 here means bad credentials, not an expired session.
-    showLogin(err.unauthorized ? 'Incorrect username or password.' : err.message);
+    showLogin(err.unauthorized ? 'Incorrect email or password.' : err.message);
   } finally {
     button.disabled = false;
     button.textContent = 'Sign in';

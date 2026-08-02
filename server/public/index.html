@@ -14,8 +14,11 @@
       <h1>FundTracker</h1>
       <p class="muted">Sign in to view your repair fund.</p>
       <label class="field">
-        <span>Username</span>
-        <input id="username-input" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        <span>Email</span>
+        <!-- Deliberately type="text", not type="email": the server accepts any
+             string as a login, so a self-hoster using a plain username isn't
+             blocked by browser format validation. -->
+        <input id="username-input" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required>
       </label>
       <label class="field">
         <span>Password</span>

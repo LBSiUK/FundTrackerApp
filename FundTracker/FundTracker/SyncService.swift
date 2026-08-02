@@ -55,28 +55,86 @@ private struct ServerError: Decodable {
     let message: String
 }
 
+private struct HealthResponse: Decodable {
+    let ok: Bool
+    let service: String
+    let setupRequired: Bool?
+}
+
+private struct DeviceResponse: Decodable {
+    let token: String
+    let deviceId: String
+    let deviceName: String
+    let username: String
+}
+
+/// What the server hands back when this device signs in. The password that
+/// obtained it is deliberately not part of this — it is never persisted.
+struct DeviceCredential {
+    let token: String
+    let deviceId: String
+    let deviceName: String
+    let username: String
+}
+
 // MARK: - Errors
 
 enum SyncError: LocalizedError {
     case notConfigured
     case invalidURL
     case unauthorized
+    case notFundTracker
+    case setupRequired
+    case badCredentials
+    case tooManyAttempts
     case server(String)
     case transport(String)
 
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            "Set your server address and token in Settings first."
+            "Sign in to your dashboard first."
         case .invalidURL:
             "That server address isn't a valid URL."
         case .unauthorized:
-            "The server rejected your token."
+            "The server rejected this device. Sign in again."
+        case .notFundTracker:
+            "Something answered, but it isn't a FundTracker server."
+        case .setupRequired:
+            "That server has no accounts yet. Create one with scripts/set-password.js."
+        case .badCredentials:
+            "Incorrect email or password."
+        case .tooManyAttempts:
+            "Too many attempts. Try again in 15 minutes."
         case .server(let message):
             message
         case .transport(let message):
             message
         }
+    }
+}
+
+// MARK: - Server address
+
+enum ServerAddress {
+    /// Turns what someone types into a URL worth sending a password to.
+    /// A bare host gets `https://`, never `http://` — the app has no ATS
+    /// exemptions, so cleartext would fail at the network layer anyway, and
+    /// silently defaulting to it would be the wrong thing even if it worked.
+    static func normalise(_ input: String) -> URL? {
+        var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+
+        if !text.contains("://") { text = "https://\(text)" }
+        while text.hasSuffix("/") { text.removeLast() }
+
+        guard
+            let url = URL(string: text),
+            url.scheme?.lowercased() == "https" || url.scheme?.lowercased() == "http",
+            let host = url.host, !host.isEmpty
+        else { return nil }
+
+        return url
     }
 }
 
@@ -116,15 +174,97 @@ final class SyncService {
         }
     }
 
+    // MARK: Onboarding
+
+    /// Checks that an address is reachable and is actually a FundTracker
+    /// server, before the sign-in step asks for a password. Returns true when
+    /// the server has no accounts yet.
+    func checkServer(_ address: String) async throws -> Bool {
+        guard let base = ServerAddress.normalise(address) else { throw SyncError.invalidURL }
+
+        var request = URLRequest(url: base.appendingPathComponent("api/health"))
+        request.timeoutInterval = 15
+
+        let (data, response) = try await send(request)
+
+        guard (200..<300).contains(response.statusCode) else {
+            throw SyncError.notFundTracker
+        }
+
+        guard
+            let health = try? JSONDecoder().decode(HealthResponse.self, from: data),
+            health.service == "fundtracker"
+        else {
+            // A 200 from an unrelated host isn't proof you typed the right address.
+            throw SyncError.notFundTracker
+        }
+
+        return health.setupRequired ?? false
+    }
+
+    /// Exchanges an email and password for this device's own sync token.
+    /// The password is used for exactly this call and never stored.
+    func signIn(
+        address: String,
+        email: String,
+        password: String,
+        deviceName: String
+    ) async throws -> DeviceCredential {
+        guard let base = ServerAddress.normalise(address) else { throw SyncError.invalidURL }
+
+        var request = URLRequest(url: base.appendingPathComponent("api/auth/device"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 20
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "email": email.trimmingCharacters(in: .whitespaces).lowercased(),
+            "password": password,
+            "deviceName": deviceName,
+        ])
+
+        let (data, response) = try await send(request)
+
+        if response.statusCode == 401 { throw SyncError.badCredentials }
+        if response.statusCode == 429 { throw SyncError.tooManyAttempts }
+
+        guard (200..<300).contains(response.statusCode) else {
+            let detail = (try? JSONDecoder().decode(ServerError.self, from: data))?.message
+            throw SyncError.server(detail ?? "Server returned \(response.statusCode).")
+        }
+
+        let issued = try JSONDecoder().decode(DeviceResponse.self, from: data)
+        return DeviceCredential(
+            token: issued.token,
+            deviceId: issued.deviceId,
+            deviceName: issued.deviceName,
+            username: issued.username
+        )
+    }
+
+    // MARK: Transport
+
+    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SyncError.transport(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw SyncError.transport("Unexpected response from the server.")
+        }
+
+        return (data, http)
+    }
+
     private func push(
         devices: [Device],
         sales: [Sale],
         settings: SyncSettings
     ) async throws -> SyncResponse {
-        guard
-            let base = URL(string: settings.serverURL.trimmingCharacters(in: .whitespaces)),
-            base.scheme != nil
-        else {
+        guard let base = ServerAddress.normalise(settings.serverURL) else {
             throw SyncError.invalidURL
         }
 
@@ -138,18 +278,10 @@ final class SyncService {
         encoder.dateEncodingStrategy = .iso8601
         request.httpBody = try encoder.encode(payload(devices: devices, sales: sales))
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw SyncError.transport(error.localizedDescription)
-        }
+        let (data, http) = try await send(request)
 
-        guard let http = response as? HTTPURLResponse else {
-            throw SyncError.transport("Unexpected response from the server.")
-        }
-
+        // The token was valid once, so a 401 now means it was revoked from the
+        // server. Settings turns this into an invitation to sign in again.
         if http.statusCode == 401 { throw SyncError.unauthorized }
 
         guard (200..<300).contains(http.statusCode) else {

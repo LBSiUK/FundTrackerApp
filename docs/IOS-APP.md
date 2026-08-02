@@ -14,8 +14,8 @@ it to the target automatically** — no pbxproj editing.
 | `FundTrackerApp.swift` | Entry point. Sets up the `ModelContainer` and injects `SyncSettings` / `SyncService`. |
 | `Models.swift` | `Device`, `Part`, `Sale` `@Model` classes plus `DeviceStatus` and `SalePlatform` enums. |
 | `FundSummary.swift` | All derived money figures. Mirrored by `server/services/summary.js`. Also holds the `Double.currency` formatting helpers. |
-| `SyncService.swift` | Wire DTOs and the `POST /api/sync` call. |
-| `SyncSettings.swift` | Server URL (UserDefaults) + token (Keychain) + last-synced date. |
+| `SyncService.swift` | Wire DTOs, the `POST /api/sync` call, and the two onboarding calls (`checkServer`, `signIn`). Also `ServerAddress.normalise`. |
+| `SyncSettings.swift` | Server URL, account email, device id (UserDefaults) + token (Keychain) + last-synced date. |
 | `PreviewData.swift` | In-memory container with sample data, for `#Preview` only. |
 | `ContentView.swift` | The three tabs. |
 | `Views/` | One file per screen, plus `Components.swift` and `PhotoSupport.swift`. |
@@ -33,7 +33,15 @@ deducted, and hides that second line when there were none.
 **Insights** — the headline cards, the affordability card, two charts, a
 platform breakdown, and the gear icon for Settings.
 
-**Settings** (sheet from Insights) — server URL, token, Sync Now, last-synced.
+**Onboarding** (full-screen on first launch) — server address, then sign-in. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the flow. Offers "Set Up Later", because
+the app is the source of truth and works with no server at all. Once dismissed
+it doesn't reappear (`hasSeenOnboarding`); Settings can start it again.
+
+**Settings** (sheet from Insights) — which server and account this phone is
+signed in to, Sign Out, Sync Now, last-synced. It shows the connected host, not
+an editable token field: the token is issued by the server now, so there's
+nothing to type.
 
 ## Conventions worth keeping
 
@@ -52,7 +60,19 @@ present and falls back to the SF Symbol otherwise, so devices without photos are
 unaffected.
 
 **The token is in the Keychain**, not UserDefaults — it's a credential.
-`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. The password that obtained it is
+never persisted anywhere; it's cleared from `@State` as soon as the sign-in call
+returns.
+
+**The Keychain outlives the app.** iOS keeps Keychain items when an app is
+deleted, so `token` can survive a reinstall while UserDefaults doesn't.
+`isConfigured` requires *both* a server URL and a token, which is what stops a
+half-remembered state from skipping onboarding. Worth knowing when testing:
+deleting the app in the simulator does not give you a clean credential state.
+
+**A phone from before onboarding existed** keeps its shared token and isn't
+dragged through setup — `init()` marks onboarding seen when `isConfigured` is
+already true. Settings labels that state and suggests signing in properly.
 
 **No App Transport Security exemptions.** The dashboard is HTTPS on a public
 hostname with a real certificate, so cleartext is blocked everywhere. An earlier

@@ -1,8 +1,9 @@
 'use strict';
 
 const express      = require('express');
-const fundRouter   = require('./routes/fund');
-const authRouter   = require('./routes/auth');
+const fundRouter    = require('./routes/fund');
+const authRouter    = require('./routes/auth');
+const devicesRouter = require('./routes/devices');
 const users        = require('./services/users');
 const session      = require('./middleware/session');
 const errorHandler = require('./middleware/errorHandler');
@@ -33,25 +34,39 @@ app.use((req, res, next) => {
 
 app.use(express.static('public'));
 
-// Unauthenticated, so the dashboard can tell "server down" from "signed out".
+// Unauthenticated, so the dashboard can tell "server down" from "signed out",
+// and so the iOS app can check a server address during onboarding before it
+// asks you for a password. `service` is what makes that check meaningful: a 200
+// from some unrelated host isn't proof you typed the right address.
+//
+// `setupRequired` lets the app say "this server has no accounts yet" instead of
+// bouncing you off a sign-in that could never succeed.
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'fundtracker' });
+  res.json({
+    ok: true,
+    service: 'fundtracker',
+    setupRequired: !users.hasAnyUser(),
+  });
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/devices', devicesRouter);
 app.use('/api', fundRouter);
 
 app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`FundTracker dashboard running at http://localhost:${PORT}`);
-  if (!process.env.FUNDTRACKER_TOKEN) {
-    console.warn('WARNING: FUNDTRACKER_TOKEN is not set — the app will not be able to sync.');
-  }
   if (!session.hasSecret()) {
     console.warn('WARNING: SESSION_SECRET is not set — nobody will be able to sign in.');
   }
   if (!users.hasAnyUser()) {
-    console.warn('WARNING: no users yet — run `node scripts/set-password.js <username>`.');
+    console.warn('WARNING: no logins yet — run `node scripts/set-password.js <email>`.');
+    console.warn('         Until then the iOS app has nothing to sign in against.');
+  }
+  if (process.env.FUNDTRACKER_TOKEN) {
+    console.warn('NOTE: FUNDTRACKER_TOKEN is set. That shared token still works, but the');
+    console.warn('      app now signs in and gets its own device token. Once every device');
+    console.warn('      has done so, remove it from .env.');
   }
 });

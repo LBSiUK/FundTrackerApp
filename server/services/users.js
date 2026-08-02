@@ -76,6 +76,19 @@ function setUser(username, password) {
   writeUsers(users);
 }
 
+function deleteUser(username) {
+  const users = readUsers();
+  const key = String(username || '').toLowerCase();
+  if (!users[key]) return false;
+  delete users[key];
+  writeUsers(users);
+  return true;
+}
+
+function listUsers() {
+  return Object.keys(readUsers()).sort();
+}
+
 /**
  * Always runs a scrypt derivation, even for an unknown username, so response
  * timing doesn't reveal which usernames exist.
@@ -94,4 +107,13 @@ function hasAnyUser() {
   return Object.keys(readUsers()).length > 0;
 }
 
-module.exports = { authenticate, setUser, hasAnyUser, hashPassword, verifyPassword, USERS_PATH };
+module.exports = {
+  authenticate,
+  setUser,
+  deleteUser,
+  listUsers,
+  hasAnyUser,
+  hashPassword,
+  verifyPassword,
+  USERS_PATH,
+};

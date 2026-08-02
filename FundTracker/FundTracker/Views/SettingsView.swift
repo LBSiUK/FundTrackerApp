@@ -9,24 +9,16 @@ struct SettingsView: View {
     @Query private var devices: [Device]
     @Query private var sales: [Sale]
 
-    var body: some View {
-        @Bindable var settings = settings
+    @State private var showOnboarding = false
+    @State private var confirmSignOut = false
 
+    var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    TextField("https://fundtracker.example.com", text: $settings.serverURL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-
-                    SecureField("Access token", text: $settings.token)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } header: {
-                    Text("Dashboard")
-                } footer: {
-                    Text("The token must match FUNDTRACKER_TOKEN on the server. It's stored in the Keychain.")
+                if settings.isConfigured {
+                    connectedSection
+                } else {
+                    disconnectedSection
                 }
 
                 Section {
@@ -71,6 +63,52 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .fullScreenCover(isPresented: $showOnboarding) {
+                OnboardingView()
+            }
+            .confirmationDialog(
+                "Sign out of the dashboard?",
+                isPresented: $confirmSignOut,
+                titleVisibility: .visible
+            ) {
+                Button("Sign Out", role: .destructive) { settings.signOut() }
+            } message: {
+                Text("Your devices and sales stay on this phone. The dashboard keeps its last synced copy until another device replaces it.")
+            }
+        }
+    }
+
+    // MARK: - Connection
+
+    @ViewBuilder
+    private var connectedSection: some View {
+        Section {
+            LabeledContent("Server", value: ServerAddress.normalise(settings.serverURL)?.host ?? settings.serverURL)
+
+            if !settings.accountEmail.isEmpty {
+                LabeledContent("Account", value: settings.accountEmail)
+            }
+
+            Button("Sign Out", role: .destructive) { confirmSignOut = true }
+        } header: {
+            Text("Dashboard")
+        } footer: {
+            if settings.isUsingLegacyToken {
+                Text("This phone still uses the old shared server token. Sign out and back in to give it its own, which can be revoked on its own.")
+            } else {
+                Text("This phone holds a sync token, not your password. It can upload records but can't read them back.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var disconnectedSection: some View {
+        Section {
+            Button("Connect to a Dashboard") { showOnboarding = true }
+        } header: {
+            Text("Dashboard")
+        } footer: {
+            Text("Optional. Everything works on this phone without one — a dashboard just lets you view the same figures in a browser.")
         }
     }
 

@@ -7,9 +7,16 @@ setup phase. In IONOS: Domains & SSL → `example.com` → DNS → edit `fundtra
 Nothing left to iterate on, and a permanently short TTL adds pointless lookups
 and gives you no cached answer to fall back on if a DNS server wobbles.
 
-**Sync the phone.** Insights → gear → server `https://fundtracker.example.com`,
-token from `grep FUNDTRACKER_TOKEN ~/fundtracker/.env` → Sync Now. Until then
-the dashboard is empty.
+**Create your email login and sign the phone in.** On the server:
+`docker exec -it fundtracker node scripts/set-password.js you@example.com`, then
+remove the old one with `node scripts/users.js delete <old-username>`. On the
+phone: Insights → gear → Sign Out, then sign back in with the email. That swaps
+the shared token for one belonging to this phone. Finally drop
+`FUNDTRACKER_TOKEN` from `~/fundtracker/.env` and `docker compose up -d`.
+
+**Shorten the session cookie.** It's 30 days and stateless, so a stolen cookie
+stays valid that long and the only remedy is rotating `SESSION_SECRET`.
+`MAX_AGE_MS` in `server/middleware/session.js`.
 
 **~~Put this under git.~~** Done — public at `github.com/LBSiUK/FundTrackerApp`.
 Because it's public, the docs use placeholder hostnames, IPs and usernames; the
@@ -33,7 +40,18 @@ simple. See [DECISIONS.md](DECISIONS.md).
 **No tests.** Verification so far has been manual: running the app in the
 simulator, screenshotting, and curling the API. The money rules in
 `FundSummary.swift` / `summary.js` are the obvious first thing to cover, since
-they're duplicated across two languages and must agree.
+they're duplicated across two languages and must agree. The auth paths are the
+second — token scoping and revocation were verified by hand with curl, which
+proves they worked once, not that they still do.
+
+**Device revocation has no dashboard UI.** `GET /api/devices` and
+`DELETE /api/devices/:id` exist and are session-guarded, but nothing in
+`public/` calls them yet. Use `scripts/devices.js` until it does.
+
+**The onboarding flow hasn't been driven end to end in the simulator.** The
+server side was exercised thoroughly with curl and the app compiles and presents
+the first screen correctly, but nobody has typed a real password into a real
+build and watched a token come back. Do that once before trusting it.
 
 **Currency is hardcoded to GBP**, isolated to `Double.currency` in
 `FundSummary.swift` and the `Intl.NumberFormat` in `public/app.js`.
