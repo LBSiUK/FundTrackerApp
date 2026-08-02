@@ -57,7 +57,7 @@ struct InsightsView: View {
             StatCard(
                 title: "Total Money In",
                 amount: summary.totalIn,
-                tint: .green,
+                tint: Palette.moneyIn,
                 caption: summary.deductions > 0
                     ? "\(summary.grossIn.currency) in sales, less \(summary.deductions.currency) fees and postage"
                     : "From all your sales"
@@ -66,14 +66,14 @@ struct InsightsView: View {
             StatCard(
                 title: "Total Money Out",
                 amount: summary.totalOut,
-                tint: .red,
+                tint: Palette.moneyOut,
                 caption: "Parts you've actually bought"
             )
 
             StatCard(
                 title: "Available Balance",
                 amount: summary.balance,
-                tint: summary.balance < 0 ? .red : .primary,
+                tint: summary.balance < 0 ? Palette.shortfall : .primary,
                 caption: "Your repair fund right now"
             )
         }
@@ -90,7 +90,7 @@ struct InsightsView: View {
                     Spacer()
                     Text(summary.outstanding.currency)
                         .font(.headline)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Palette.secondary)
                 }
 
                 Text("Across \(summary.devicesNeedingParts) device\(summary.devicesNeedingParts == 1 ? "" : "s")")
@@ -103,7 +103,7 @@ struct InsightsView: View {
                     Image(systemName: summary.canAffordOutstanding
                           ? "checkmark.circle.fill"
                           : "exclamationmark.triangle.fill")
-                        .foregroundStyle(summary.canAffordOutstanding ? .green : .orange)
+                        .foregroundStyle(summary.canAffordOutstanding ? Palette.affordable : Palette.shortfall)
 
                     Text(summary.canAffordOutstanding
                          ? "Covered, with \(summary.shortfall.currency) left over"
@@ -130,7 +130,7 @@ struct InsightsView: View {
                         x: .value("Month", month.month, unit: .month),
                         y: .value("Net income", month.amount)
                     )
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Palette.moneyIn)
                     .cornerRadius(4)
                     .accessibilityLabel(month.month.formatted(.dateTime.month(.wide).year()))
                     .accessibilityValue(month.amount.currency)
@@ -165,7 +165,7 @@ struct InsightsView: View {
                         x: .value("Spent", entry.amount),
                         y: .value("Device", entry.name)
                     )
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Palette.moneyOut)
                     .cornerRadius(4)
                     .annotation(position: .trailing, alignment: .leading) {
                         Text(entry.amount.currency)

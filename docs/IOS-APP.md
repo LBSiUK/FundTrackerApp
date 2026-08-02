@@ -1,7 +1,12 @@
 # The iOS app
 
-SwiftUI + SwiftData, deployment target **iOS 18.0** (the `Tab(...)` initialisers
-in `ContentView` require it). Swift 5 language mode, `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`.
+SwiftUI + SwiftData, deployment target **iOS 26.0**. Swift 5 language mode,
+`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`.
+
+The target was 18.0 until the app moved to the Liquid Glass button styles —
+`.glass` and `.glassProminent` are `@available(iOS 26.0, *)`, and using them
+without availability branches everywhere means requiring 26. That drops anything
+older; acceptable for a single-user app, worth knowing before sharing a build.
 
 Open `FundTracker/FundTracker.xcodeproj` and run. The project uses Xcode's
 file-system-synchronised groups, so **adding a `.swift` file to the folder adds
@@ -80,10 +85,36 @@ version had `NSAllowsLocalNetworking` for plain HTTP on the LAN; that was
 removed once TLS was in place. If you ever go back to a LAN-only HTTP setup
 you'll need to re-add it or connections fail silently.
 
+## Colour
+
+Four brand colours, defined once in `Palette.swift` over asset catalog colorsets:
+5F021F burgundy, BD3E2B brick, E96B0B orange, FFF984 pale yellow. Views reference
+semantic names (`Palette.moneyIn`, `Palette.shortfall`), never raw colours, so a
+future rescheme is one file.
+
+Two properties of this palette drove the design and shouldn't be undone:
+
+**It's one warm ramp, so the ends are mode-specific.** 5F021F scores 1.26:1
+against a dark surface and FFF984 scores 1.07:1 against a light one — each is
+invisible in one mode. The colorsets therefore *substitute* rather than reuse:
+`BrandPrimary` is burgundy on light and brick on dark, `BrandAccent` is orange on
+light and yellow on dark. Don't "simplify" them to single values.
+`BrandHighlightFill` is the exception that stays pale yellow in both modes,
+because it's only ever a background with dark ink on top.
+
+**It can't carry categories.** Brick and orange sit ΔE 13.7 apart, below the 15
+floor for distinguishing two series at a glance, and with five sale platforms
+there aren't enough separable hues regardless. So colour here is *emphasis*, not
+*identity*: every status and platform keeps its SF Symbol and text label, and the
+colour is a second cue only. Adding a chart that distinguishes series by colour
+alone would need a different palette.
+
 ## Charts
 
-Both are single-series magnitude, so each uses one semantic hue (green for
-money in, red for spend) and needs no legend — the heading names the series.
+Both are single-series magnitude, so each uses one hue (`Palette.moneyIn` for
+money in, `Palette.moneyOut` for spend) and needs no legend — the heading names
+the series. Single-series is what makes the palette workable here: neither chart
+asks a colour to distinguish one category from another.
 Bars have rounded data-ends anchored to the baseline; grid and axes are
 recessive. Month labels use `.abbreviated`, not `.narrow` — narrow renders both
 March and May as "M".

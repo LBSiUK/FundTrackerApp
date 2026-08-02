@@ -52,7 +52,7 @@ struct SaleEditorView: View {
                     LabeledContent("Into the fund") {
                         Text(net.currency)
                             .fontWeight(.semibold)
-                            .foregroundStyle(net < 0 ? .red : .green)
+                            .foregroundStyle(net < 0 ? Palette.shortfall : Palette.moneyIn)
                     }
                 }
 

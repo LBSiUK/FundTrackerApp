@@ -110,7 +110,7 @@ private struct PartRow: View {
             } label: {
                 Image(systemName: part.isPurchased ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(part.isPurchased ? Color.green : Color.secondary)
+                    .foregroundStyle(part.isPurchased ? Palette.accent : Color.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(part.isPurchased ? "Mark as not bought" : "Mark as bought")

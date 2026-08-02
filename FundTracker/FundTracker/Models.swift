@@ -82,10 +82,11 @@ enum DeviceStatus: String, Codable, CaseIterable, Identifiable {
 
     var tint: Color {
         switch self {
-        case .needsParts: .orange
-        case .inProgress: .blue
-        case .fixed: .green
-        case .sold: .purple
+        case .needsParts: Palette.secondary
+        case .inProgress: Palette.accent
+        case .fixed: Palette.primary
+        // Done and gone — it should recede rather than compete.
+        case .sold: .secondary
         }
     }
 }
@@ -189,10 +190,13 @@ enum SalePlatform: String, Codable, CaseIterable, Identifiable {
 
     var tint: Color {
         switch self {
-        case .ebay: .blue
-        case .vinted: .teal
-        case .facebook: .indigo
-        case .cash: .green
+        // Five platforms is more than a four-colour warm ramp can separate,
+        // so these are decorative next to the name and symbol that identify
+        // each row. Brand colours lead; the rest recede to neutrals.
+        case .ebay: Palette.primary
+        case .vinted: Palette.accent
+        case .facebook: Palette.secondary
+        case .cash: .secondary
         case .other: .gray
         }
     }

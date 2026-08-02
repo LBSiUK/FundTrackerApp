@@ -117,10 +117,10 @@ struct SettingsView: View {
         switch sync.state {
         case .success:
             Label("Pushed to the dashboard.", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(Palette.accent)
         case .failure(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Palette.secondary)
         case .idle, .syncing:
             Text("Sends everything to your dashboard, replacing what's there.")
         }

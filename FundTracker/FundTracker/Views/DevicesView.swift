@@ -26,7 +26,7 @@ struct DevicesView: View {
                         Text("Add a device you're fixing and list the parts it needs.")
                     } actions: {
                         Button("Add Device") { isAddingDevice = true }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.glassProminent)
                     }
                 } else {
                     deviceList
@@ -66,7 +66,7 @@ struct DevicesView: View {
                             Button("Edit", systemImage: "pencil") {
                                 editingDevice = device
                             }
-                            .tint(.blue)
+                            .tint(Palette.primary)
                         }
                     }
                 } header: {
@@ -108,7 +108,7 @@ private struct DeviceRow: View {
                 if device.outstanding > 0 {
                     Text(device.outstanding.currency)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Palette.secondary)
                     Text("to buy")
                         .font(.caption2)
                         .foregroundStyle(.secondary)

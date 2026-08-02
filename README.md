@@ -7,7 +7,7 @@ Two halves:
 
 | Part | Where | What it is |
 |---|---|---|
-| iOS app | `FundTracker/` | SwiftUI + SwiftData, iOS 18+. The source of truth. |
+| iOS app | `FundTracker/` | SwiftUI + SwiftData, iOS 26+. The source of truth. |
 | Dashboard | `server/` | Express + Caddy, read-only web view. Live at `https://fundtracker.example.com` |
 
 ## Quick reference

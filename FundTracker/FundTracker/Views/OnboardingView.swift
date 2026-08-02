@@ -84,7 +84,7 @@ struct OnboardingView: View {
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Palette.secondary)
             }
 
             Button {
@@ -97,12 +97,13 @@ struct OnboardingView: View {
                     Spacer()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty || isBusy)
 
             // The phone is the source of truth and works entirely offline, so
             // a dashboard is optional. Settings can pick this up later.
             Button("Set Up Later") { finish() }
+                .buttonStyle(.glass)
                 .disabled(isBusy)
                 .frame(maxWidth: .infinity)
 
@@ -148,7 +149,7 @@ struct OnboardingView: View {
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Palette.secondary)
             }
 
             Button {
@@ -161,7 +162,7 @@ struct OnboardingView: View {
                     Spacer()
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .disabled(email.isEmpty || password.isEmpty || isBusy)
 
             Spacer()

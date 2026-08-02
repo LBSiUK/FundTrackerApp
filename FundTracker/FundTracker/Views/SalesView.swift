@@ -39,7 +39,7 @@ struct SalesView: View {
                         Text("Log what you sell on eBay and Vinted to build up your repair fund.")
                     } actions: {
                         Button("Add Sale") { isAddingSale = true }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.glassProminent)
                     }
                 } else {
                     salesList
@@ -148,7 +148,7 @@ private struct SaleRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(sale.netAmount.signedCurrency)
                     .font(.headline)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Palette.moneyIn)
 
                 // Only worth showing the gross when something was taken off it.
                 if sale.hasDeductions {
