@@ -21,7 +21,8 @@ it to the target automatically** — no pbxproj editing.
 | `FundSummary.swift` | All derived money figures. Mirrored by `server/services/summary.js`. Also holds the `Double.currency` formatting helpers. |
 | `SyncService.swift` | Wire DTOs, the `POST /api/sync` call, and the two onboarding calls (`checkServer`, `signIn`). Also `ServerAddress.normalise`. |
 | `SyncSettings.swift` | Server URL, account email, device id (UserDefaults) + token (Keychain) + last-synced date. |
-| `PreviewData.swift` | In-memory container with sample data, for `#Preview` only. |
+| `PreviewData.swift` | Sample devices, parts and sales: an in-memory container for `#Preview`, and the records `-demo` seeds. |
+| `DemoData.swift` | Debug only. The `-demo` launch argument: seeds an empty, never-connected install with the sample records. |
 | `ContentView.swift` | The three tabs. |
 | `Palette.swift` | The colour scheme, semantic names over asset colorsets. |
 | `Views/BrandLogo.swift` | The mark and the wordmark lockup. |
@@ -253,9 +254,16 @@ constraint, not something the build can change.
 ## Testing without a device
 
 `PreviewData.container` gives an in-memory store with sample devices, parts and
-sales. Every `#Preview` uses it. To see the app running with that data instead
-of an empty store, temporarily point `FundTrackerApp` at
-`.modelContainer(PreviewData.container)` — just remember to revert it.
+sales. Every `#Preview` uses it.
+
+To see the app running with the same data, launch a Debug build with the
+`-demo` argument (Product > Scheme > Edit Scheme > Run > Arguments, or
+`xcrun simctl launch booted uk.lbsi.FundTracker -demo`). `DemoData.swift` copies
+the sample records into the real store and skips onboarding as if "Stay
+offline" had been chosen. It only does this on an install with no records that
+has never been signed in to a server, so sample data can't be synced over a real
+account. Settings > Reset App clears it. The whole file is `#if DEBUG`, so
+Release builds don't contain it.
 
 Simulator has no camera, so the "Take Photo" button correctly hides itself there
 (`UIImagePickerController.isCameraAvailable`).

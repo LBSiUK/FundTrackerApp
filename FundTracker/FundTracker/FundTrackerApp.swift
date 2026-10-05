@@ -3,8 +3,16 @@ import SwiftData
 
 @main
 struct FundTrackerApp: App {
-    @State private var syncSettings = SyncSettings()
+    @State private var syncSettings: SyncSettings
     @State private var syncService = SyncService()
+
+    init() {
+        let settings = SyncSettings()
+        #if DEBUG
+        DemoData.seedIfRequested(settings: settings)
+        #endif
+        _syncSettings = State(initialValue: settings)
+    }
 
     var body: some Scene {
         WindowGroup {
