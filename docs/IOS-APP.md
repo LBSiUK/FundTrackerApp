@@ -79,7 +79,7 @@ the app is the source of truth and works with no server at all. Once dismissed
 it doesn't reappear (`hasSeenOnboarding`); Settings can start it again.
 
 **Settings** (its own tab) — which server and account this device is
-signed in to, Sign Out, Sync Now, last-synced. It shows the connected host, not an editable
+signed in to, Sign Out, last-synced and the sync status. It shows the connected host, not an editable
 token field: the token is issued by the server now, so there's nothing to type.
 There is no Sync button — see below. A Danger Zone at the bottom holds **Reset App** (erases the
 devices and sales on this device, leaving the account alone) and **Delete
@@ -124,6 +124,12 @@ deleted, so `token` can survive a reinstall while UserDefaults doesn't.
 half-remembered state from skipping onboarding. Worth knowing when testing:
 deleting the app in the simulator does not give you a clean credential state.
 
+The reverse catches people out too: a simulator build made with
+`CODE_SIGNING_ALLOWED=NO` has no keychain entitlement, so `SecItemAdd` fails
+silently. Sign-in and sync work for that session because the token is held in
+memory, but the next launch reads no token and Settings offers "Set Up Server
+Sync" again. Build normally; Xcode signs simulator builds locally without a team.
+
 **A phone from before onboarding existed** keeps its shared token and isn't
 dragged through setup — `init()` marks onboarding seen when `isConfigured` is
 already true. Settings labels that state and suggests signing in properly.
@@ -132,7 +138,9 @@ already true. Settings labels that state and suggests signing in properly.
 hostname with a real certificate, so cleartext is blocked everywhere. An earlier
 version had `NSAllowsLocalNetworking` for plain HTTP on the LAN; that was
 removed once TLS was in place. If you ever go back to a LAN-only HTTP setup
-you'll need to re-add it or connections fail silently.
+you'll need to re-add it or connections fail silently. Testing against a server
+on the same Mac still works without it: the simulator reaches
+`http://localhost:3100` with no exemption.
 
 ## The mark
 

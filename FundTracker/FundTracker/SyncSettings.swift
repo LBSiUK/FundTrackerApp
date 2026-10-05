@@ -37,7 +37,7 @@ final class SyncSettings {
     }
 
     /// The server's id for this device, so it can be matched up with the entry
-    /// shown by `scripts/devices.js list`.
+    /// shown by `scripts/accounts.js devices <accountId>` and in /admin.
     var deviceId: String {
         didSet { UserDefaults.standard.set(deviceId, forKey: Self.deviceIdKey) }
     }

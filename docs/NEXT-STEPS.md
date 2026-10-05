@@ -24,13 +24,12 @@ from the move to SQLite. Nothing reads them; delete once you're happy.
 
 ## Known gaps
 
-**Two flows have never been driven end to end.** Everything server-side is
-exercised with curl, and the app compiles and has been screenshotted, but nobody
-has typed a real password through the app's sign-in, nor tapped Reset App and
-watched it return to onboarding. Both are code-correct as far as reading goes.
-Driving the simulator by touch needs accessibility permission that wasn't
-available; see the recording technique in [IOS-APP.md](IOS-APP.md) for what
-*can* be checked without it.
+**Sign-in and Reset App have only been driven in the simulator.** On
+2026-10-05 a UI test typed a real password through the app's sign-in against a
+local server (`http://localhost`), saw the records sync, relaunched and stayed
+signed in, then tapped Reset App, watched it return to onboarding, signed in
+again and saw the records restored from the server. Not yet repeated on a real
+phone against the HTTPS deployment.
 
 **No tests.** Verification has been manual throughout: curl against a running
 server, builds, and screenshots. Two things deserve covering first — the money
@@ -41,9 +40,6 @@ would catch a regression.
 
 **The dashboard is read-only.** Editing from a browser would need bidirectional
 sync, which breaks the full-replace assumption. See [DECISIONS.md](DECISIONS.md).
-
-**Sync is manual.** Settings → Sync Now. Could sync on background, or after an
-edit with a debounce. Neither is built.
 
 **Photo storage has no overall budget.** Uploads are capped at 3MB each and
 orphans are pruned per account on each sync, but nothing caps the total. At
