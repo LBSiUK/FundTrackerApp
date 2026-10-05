@@ -254,7 +254,7 @@ function render(data) {
       const amount = document.createElement('span');
       amount.className = 'amount';
       amount.textContent = gbp.format(entry.amount);
-      li.append(label, amount);
+      li.append(name, amount);
       return li;
     })
   );
