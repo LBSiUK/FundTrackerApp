@@ -1,13 +1,14 @@
 'use strict';
 
-// Guards the write side (sync and photo upload) with a per-device bearer token.
+// Guards the phone's side (sync and photos) with a per-device bearer token.
 //
 // The token resolves to a device *and* the account that owns it, and every
 // write is then scoped to that account id. With several users on one server
 // that scoping is what stops one phone's sync replacing someone else's records.
 //
-// A token can never read: /api/summary and /api/snapshot need a login session.
-// One lifted off a phone still shows an attacker nothing.
+// A token can't reach the dashboard routes: /api/summary and /api/snapshot need
+// a login session. It can read its own account back through GET /api/sync and
+// GET /api/photos, so a reset phone can restore itself (see DECISIONS.md).
 
 const devices = require('../services/devices');
 

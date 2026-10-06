@@ -168,7 +168,9 @@ help, because the stale copy is upstream. Either wait it out or switch DNS to
 `8.8.8.8` / `9.9.9.9`.
 
 **Dashboard loads but shows nothing**
-Nothing has been synced. Open the app → Insights → gear → Sync Now.
+Nothing has been synced yet. Open the app while it's signed in to this server:
+it syncs at launch, after every change and every minute, and on pull-to-refresh.
+Settings shows the last sync and any error.
 
 **Sync fails from the phone**
 "The server rejected this device" means the token was revoked (or the account

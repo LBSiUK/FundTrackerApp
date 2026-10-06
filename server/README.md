@@ -55,12 +55,13 @@ server ignores it and logs a reminder at startup if it's still in `.env`.
 | POST | `/api/auth/logout` | none | Clears the cookie |
 | GET | `/api/auth/me` | none | Who you are, or 401 |
 | POST | `/api/sync` | Bearer | Push `{ devices, sales }` for the token's account |
+| GET | `/api/sync` | Bearer | Pull the token's account records back, so a reset phone can restore |
 | GET | `/api/summary` | User | Everything the dashboard renders |
 | GET | `/api/snapshot` | User | Raw stored payload, for backups |
 | GET | `/api/devices` | User | Your own phones |
 | DELETE | `/api/devices/:id` | User | Revoke one of yours (404 if it isn't) |
 | POST | `/api/photos/:hash` | Bearer | Upload a device photo (raw JPEG body) |
-| GET | `/api/photos/:hash` | User | Serve one you own |
+| GET | `/api/photos/:hash` | User or Bearer | Serve one you own |
 | GET | `/api/admin/accounts` | Admin | Paged, searchable account list |
 | POST | `/api/admin/accounts` | Admin | Create one |
 | GET | `/api/admin/accounts/:id` | Admin | One account with its devices, photos and fund summary |
@@ -72,8 +73,9 @@ server ignores it and logs a reminder at startup if it's still in `.env`.
 | DELETE | `/api/admin/invites/:id` | Admin | Revoke one |
 | POST | `/api/admin/invites/purge` | Admin | Drop used and expired |
 
-**Auth column.** *Bearer* is a device sync token — write only, and scoped to the
-account that owns the device. *Session* is any signed-in account. *User* is a
+**Auth column.** *Bearer* is a device sync token, scoped to the account that
+owns the device: it can push and pull that account's records and photos, and
+nothing else. *Session* is any signed-in account. *User* is a
 signed-in non-admin: admins are rejected from fund routes, because the admin
 account manages the server rather than using it. *Admin* is the reverse.
 

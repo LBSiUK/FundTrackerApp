@@ -8,11 +8,12 @@
 │   FundTracker   │  Photos upload separately, by content hash
 └────────┬────────┘
          │ POST /api/sync     (Bearer token, HTTPS) full replace, no merge
+         │ GET  /api/sync     (Bearer token, HTTPS) restore an empty device
          │ POST /api/photos/… (Bearer token, HTTPS) only what's missing
          ▼
    internet ──443──▶ Caddy (TLS, Let's Encrypt)  ──▶  app:3100
                      fundtracker.example.com              Docker internal network
-                                                      snapshot.json on a volume
+                                                      SQLite + photos on a volume
          ▲
          │ browser: username + password → session cookie
          │
@@ -97,7 +98,7 @@ sums otherwise surface as `204.60000000000002`.
 
 | Caller | Credential | Can reach |
 |---|---|---|
-| iOS app | Per-device Bearer token | `POST /api/sync` only — write, no read |
+| iOS app | Per-device Bearer token | `POST`/`GET /api/sync` and photos, for its own account only |
 | Browser | email + password → session cookie | `GET /api/summary`, `/api/snapshot`, `/api/devices` — read, no write |
 
 The login cannot push data. The token can now read **its own account's records
@@ -220,9 +221,9 @@ that the body starts with a JPEG marker, and that it's under 3MB. A photo the
 snapshot no longer refers to is pruned on the next sync — first this account's
 claim on it, then the file itself once no account references it at all.
 
-Photo writes use the device token and photo reads use the browser session, so
-the read/write split survives: a token lifted off a phone can add a photo but
-still can't look at one.
+Photo writes use the device token. Photo reads take either the browser session
+or the owning device's token, because a restored phone needs its photos back.
+Either way the read is scoped to the caller's own account.
 
 ## Accounts and the database
 
